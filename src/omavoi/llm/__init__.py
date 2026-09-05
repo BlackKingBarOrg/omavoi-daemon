@@ -142,11 +142,11 @@ class Registry:
             try:
                 stop()
             except Exception:
-                log.debug("could not stop %s", name)
+                log.debug("could not stop %s", key)
                 continue
             # The object stays: close() resets it to cold, and keeping it
             # means the next take that names it restarts rather than rebuilds.
-            freed.append(name)
+            freed.append(key)
         return freed
 
     def states(self) -> list[dict[str, Any]]:

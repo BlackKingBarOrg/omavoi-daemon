@@ -89,6 +89,10 @@ class WhisperCppBackend:
         # ggml picks its backend plugin from here; leave empty for the default.
         self.backend_path: str = opts.get("ggml_backend_path", "")
         self.startup_timeout: float = float(opts.get("startup_timeout", 120.0))
+        # The shortest a take is allowed to wait before the server counts as
+        # wedged. Long enough for a cold cache, short enough that finding out
+        # is not itself the problem.
+        self.min_timeout: float = float(opts.get("min_timeout", 20.0))
         self.beam_size = int(opts.get("beam_size", 5))
 
         self.default_language: str = speech.get("language", "") or ""
@@ -133,8 +137,17 @@ class WhisperCppBackend:
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
         )
         self._url = f"http://127.0.0.1:{port}"
-        self._client = httpx.Client(timeout=120.0)
+        self._client = httpx.Client(timeout=self.startup_timeout)
         self._wait_ready()
+
+    def _post(self, body: bytes, data: dict[str, str], deadline: float) -> Any:
+        if self._client is None:
+            raise RuntimeError("whisper.cpp server is not running")
+        return self._client.post(
+            f"{self._url}/inference", data=data,
+            files={"file": ("audio.wav", body, "audio/wav")},
+            timeout=deadline,
+        )
 
     def use(self, model_key: str) -> None:
         """Point this backend at different weights.
@@ -226,6 +239,8 @@ class WhisperCppBackend:
         language: str | None = None,
         prompt: str | None = None,
     ) -> Transcript:
+        import httpx
+
         if self._client is None:
             raise RuntimeError("whisper.cpp server is not running")
 
@@ -245,9 +260,41 @@ class WhisperCppBackend:
         if seeded:
             data["prompt"] = seeded
 
-        files = {"file": ("audio.wav", encode_wav(samples, rate), "audio/wav")}
+        body = encode_wav(samples, rate)
+        # A flat 120s meant a two-second clip waited two minutes to find out
+        # the server had stopped answering — and every press during that
+        # window was refused as "still transcribing the previous take". Large
+        # models run well above realtime on a GPU, so four times the audio
+        # plus a floor is generous and still fails fast.
+        seconds = len(samples) / float(rate or 16000)
+        deadline = max(self.min_timeout, seconds * 4.0 + 10.0)
+
         started = time.monotonic()
-        response = self._client.post(f"{self._url}/inference", data=data, files=files)
+        try:
+            response = self._post(body, data, deadline)
+        except (httpx.TimeoutException, httpx.TransportError) as exc:
+            # Wedged, not slow: it accepts connections and never finishes. A
+            # 29-hour-old server did exactly this, and because nothing here
+            # could tell the difference the key was dead until the daemon was
+            # restarted by hand. Rebuild it and try the take once more rather
+            # than throwing away what the user just said.
+            log.warning("whisper.cpp stopped answering (%s); restarting it", exc)
+            try:
+                self.close()
+                self.load()
+            except Exception as restart_exc:
+                raise RuntimeError(
+                    f"whisper.cpp stopped answering and could not be "
+                    f"restarted: {restart_exc}"
+                ) from exc
+            try:
+                response = self._post(body, data, deadline)
+            except (httpx.TimeoutException, httpx.TransportError) as second:
+                raise RuntimeError(
+                    "whisper.cpp stopped answering twice, once after a "
+                    f"restart: {second}"
+                ) from second
+            log.info("whisper.cpp answered after a restart")
         elapsed = time.monotonic() - started
 
         if response.status_code >= 400:
