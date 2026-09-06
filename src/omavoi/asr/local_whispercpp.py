@@ -23,6 +23,8 @@ from typing import Any
 
 import numpy as np
 
+from .. import notify
+
 from .. import models
 from ..models import GGML
 from .api_whisper import encode_wav
@@ -137,7 +139,17 @@ class WhisperCppBackend:
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
         )
         self._url = f"http://127.0.0.1:{port}"
-        self._client = httpx.Client(timeout=self.startup_timeout)
+        # No pooling. whisper-server answers `Keep-Alive: timeout=5, max=100`,
+        # so it drops an idle connection after five seconds — and every hang
+        # seen so far followed minutes of silence, never a take ten seconds
+        # after the last one. A request posted into a socket the server has
+        # already let go is written in full and then waits for a reply that
+        # cannot come. Over loopback a fresh connection costs nothing worth
+        # measuring, so the reuse that creates the race simply goes away.
+        self._client = httpx.Client(
+            timeout=self.startup_timeout,
+            limits=httpx.Limits(max_keepalive_connections=0),
+        )
         self._wait_ready()
 
     def _post(self, body: bytes, data: dict[str, str], deadline: float) -> Any:
@@ -279,6 +291,9 @@ class WhisperCppBackend:
             # restarted by hand. Rebuild it and try the take once more rather
             # than throwing away what the user just said.
             log.warning("whisper.cpp stopped answering (%s); restarting it", exc)
+            notify.send("Omavoi", "the speech server stopped answering — "
+                                  "restarting it and retrying this take",
+                        urgency="normal")
             try:
                 self.close()
                 self.load()
