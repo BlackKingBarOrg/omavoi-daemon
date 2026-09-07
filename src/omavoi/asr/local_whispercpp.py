@@ -24,6 +24,7 @@ from typing import Any
 import numpy as np
 
 from .. import notify
+from ..childlog import ChildLog
 
 from .. import models
 from ..models import GGML
@@ -101,6 +102,7 @@ class WhisperCppBackend:
         self.default_prompt: str = ""
 
         self._proc: subprocess.Popen[bytes] | None = None
+        self._log: ChildLog | None = None
         self._client: Any = None
         self._url = ""
         self._model_path = ""
@@ -138,6 +140,10 @@ class WhisperCppBackend:
         self._proc = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
         )
+        # Drained from here on. Left unread, the pipe fills and the server
+        # blocks in write() while still accepting connections — alive, and
+        # answering nothing.
+        self._log = ChildLog(self._proc)
         self._url = f"http://127.0.0.1:{port}"
         # No pooling. whisper-server answers `Keep-Alive: timeout=5, max=100`,
         # so it drops an idle connection after five seconds — and every hang
@@ -191,9 +197,7 @@ class WhisperCppBackend:
         deadline = time.monotonic() + self.startup_timeout
         while time.monotonic() < deadline:
             if self._proc is not None and self._proc.poll() is not None:
-                out = b""
-                if self._proc.stdout is not None:
-                    out = self._proc.stdout.read() or b""
+                out = self._log.text() if self._log is not None else b""
                 # Usually a missing ggml compute backend, which no amount of
                 # restarting will conjure.
                 raise NotReady(

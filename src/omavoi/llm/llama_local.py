@@ -20,6 +20,7 @@ import time
 from typing import Any
 
 from .. import gpu, models
+from ..childlog import ChildLog
 from .base import LlmResult
 
 log = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ class LlamaLocalBackend:
         self.thinking = bool(cfg.get("thinking", False))
 
         self._proc: subprocess.Popen[bytes] | None = None
+        self._log: ChildLog | None = None
         self._client: Any = None
         self._url = ""
         self._fail = ""
@@ -166,15 +168,16 @@ class LlamaLocalBackend:
         self._proc = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=dict(os.environ)
         )
+        # Same trap as whisper.cpp: an unread pipe fills and the server
+        # blocks in write() while still listening. See omavoi.childlog.
+        self._log = ChildLog(self._proc)
         self._url = f"http://127.0.0.1:{port}"
         self._client = httpx.Client(timeout=self.timeout)
 
         deadline = time.monotonic() + self.startup_timeout
         while time.monotonic() < deadline:
             if self._proc.poll() is not None:
-                out = b""
-                if self._proc.stdout is not None:
-                    out = self._proc.stdout.read() or b""
+                out = self._log.text() if self._log is not None else b""
                 self._fail = "llama-server exited on startup:\n" + _explain(out)
                 self._fail_key = (binary, str(path))
                 return self._fail
