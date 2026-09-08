@@ -367,9 +367,22 @@ def cmd_model(args: argparse.Namespace) -> int:
                 return (spec.key == running_speech
                         or (spec.fmt == models.CT2 and spec.id == running_speech))
 
+            # Which weights an LLM configuration points at, so an llm row can
+            # answer "is this the one in use?" the same way a speech row does.
+            # It could not before: `active` compared every entry against the
+            # speech model, so no llm entry was ever active and the UI grew a
+            # second, different way of asking.
+            llm_chosen = {str(e.get("model", ""))
+                          for e in cfg.get("llm", {}).values()
+                          if str(e.get("model", ""))}
+
             rows = []
             for spec in models.CATALOG:
-                fit = (gpu.fits(spec.size_mb) if spec.kind == models.LLM else {})
+                # Every model costs VRAM, so every model can fail to fit.
+                # Asking only about LLMs meant a speech model that will not
+                # load reported fits:true — and the speech table had no
+                # warning to show because the data was never there.
+                fit = gpu.fits(spec.size_mb)
                 rows.append({
                     "fits": fit.get("fits", True),
                     "needed_mb": fit.get("needed_mb", 0),
@@ -379,7 +392,11 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "downloaded": models.is_downloaded(spec.key),
                     "path": str(models.local_path(spec.key) or ""),
                     "ours": models.owned_by_us(spec.key),
-                    "active": spec.key == active or (spec.fmt == models.CT2 and spec.id == active),
+                    "active": (spec.key in llm_chosen
+                               if spec.kind == models.LLM
+                               else spec.key == active
+                                    or (spec.fmt == models.CT2
+                                        and spec.id == active)),
                     "running": _is_running(spec),
                 })
             from . import gpu, secrets
