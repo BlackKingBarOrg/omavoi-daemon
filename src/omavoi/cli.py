@@ -1376,7 +1376,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
         return save(f"{name}.match = {current or '[]'}")
 
     if args.action == "step":
-        if not need(2, "step <mode> add|rm|prompt|llm [...]"):
+        if not need(2, "step <mode> add|rm|prompt|llm|model [...]"):
             return 1
         name, op = rest[0], rest[1]
         if name not in table:
@@ -1438,7 +1438,12 @@ def cmd_mode(args: argparse.Namespace) -> int:
                               f"configuration — only that one runs weights from the "
                               f"catalogue{RESET}", file=sys.stderr)
                         return 1
-                steps[index]["model"] = want
+                if want:
+                    steps[index]["model"] = want
+                else:
+                    # Inherit is the absence of an override, not an override
+                    # that happens to be blank.
+                    steps[index].pop("model", None)
             else:
                 llm = rest[3] if len(rest) > 3 else ""
                 if llm not in cfg.get("llm", {}):
