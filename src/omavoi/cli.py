@@ -425,8 +425,38 @@ def cmd_model(args: argparse.Namespace) -> int:
                     **_llm_live(engines, name),
                 })
 
+            # The remote speech endpoint, in the same shape as an llm entry.
+            # It was absent entirely, so the console could offer the engine and
+            # then had nothing to configure it with — you could select "remote
+            # API" for speech and there was nowhere to put the URL.
+            from .asr.api_whisper import PROVIDERS
+
+            sapi = dict(cfg["speech"].get("api") or {})
+            sprov = str(sapi.get("provider", "") or "")
+            preset = PROVIDERS.get(sprov, {})
+            # What the backend will actually use: the explicit value, or the
+            # provider's default underneath it.
+            s_key_env = str(sapi.get("key_env", "") or preset.get("key_env", ""))
+            s_key = secrets.resolve(s_key_env, str(sapi.get("key_name", "") or "speech-api"))
+            speech_api = {
+                "provider": sprov,
+                "providers": sorted(PROVIDERS.keys()),
+                "base_url": str(sapi.get("base_url", "") or ""),
+                "model": str(sapi.get("model", "") or ""),
+                "key_env": s_key_env,
+                "key": secrets.redact(s_key) if s_key_env else "",
+                "has_key": bool(s_key) or not s_key_env,
+                # Shown greyed as the value that applies when the field is
+                # left empty, so a preset is visible rather than magic.
+                "default_base_url": str(preset.get("base_url", "")),
+                "default_model": str(preset.get("model", "")),
+                "default_key_env": str(preset.get("key_env", "")),
+                "selected": cfg["speech"]["backend"] == "api",
+            }
+
             print(json.dumps({"active": active,
                               "backend": cfg["speech"]["backend"],
+                              "speech_api": speech_api,
                               "root": str(models.model_root()),
                               "models": rows,
                               "llm": llms,
@@ -558,7 +588,27 @@ def _why_not_that_llm_model(key: str, value: str) -> str:
     return ""
 
 
-def _check_endpoint(name: str, entry: dict[str, Any], *, as_json: bool = False) -> int:
+def _why_not_that_provider(key: str, value: str) -> str:
+    """Why `speech.api.provider = value` would not work, or "" if it would.
+
+    The presets are the only thing this name selects, so a name outside them
+    silently selects nothing: no base_url, no model, no key_env, and a remote
+    engine that fails at the first take with no clue that a typo was the
+    cause.
+    """
+    if str(key) != "speech.api.provider":
+        return ""
+    from .asr.api_whisper import PROVIDERS
+
+    if value in PROVIDERS:
+        return ""
+    return (f"{value} is not a known provider. "
+            f"One of: {', '.join(sorted(PROVIDERS))} "
+            f"— or leave it and set speech.api.base_url yourself")
+
+
+def _check_endpoint(name: str, entry: dict[str, Any], *, as_json: bool = False,
+                    label: str = "") -> int:
     """Ask an OpenAI-compatible endpoint for its model list.
 
     One GET answers everything that can be wrong before a take: whether the
@@ -573,7 +623,8 @@ def _check_endpoint(name: str, entry: dict[str, Any], *, as_json: bool = False) 
 
     base = str(entry.get("base_url") or "").rstrip("/")
     if not base:
-        out = {"ok": False, "error": f"llm.{name}.base_url is not set"}
+        out = {"ok": False,
+               "error": f"{label or f'llm.{name}'}.base_url is not set"}
     else:
         key_env = str(entry.get("key_env", ""))
         key = secrets.resolve(key_env, str(entry.get("key_name", "") or name))
@@ -668,6 +719,51 @@ def _hotkey_report() -> dict[str, Any]:
         # and the listener was on another.
         out["matches"] = str(hk.get("key", "")) == want
     return out
+
+
+def cmd_speech(args: argparse.Namespace) -> int:
+    """The remote speech endpoint: what it is set to, and whether it answers.
+
+    The remote engine could be selected and never configured — the console
+    offered the card and had no fields behind it, and there was no way to ask
+    whether the endpoint worked either. Same two questions the remote LLM
+    already answered, so the same two answers.
+    """
+    from .asr.api_whisper import PROVIDERS
+
+    cfg = config.load()
+    api = dict(cfg["speech"].get("api") or {})
+    provider = str(api.get("provider", "") or "")
+    preset = PROVIDERS.get(provider, {})
+    # What the backend will actually use: the explicit value, else the
+    # provider's. Reporting the config alone would say "not set" about a URL
+    # that is about to work.
+    entry = {
+        "base_url": str(api.get("base_url", "") or preset.get("base_url", "")),
+        "model": str(api.get("model", "") or preset.get("model", "")),
+        "key_env": str(api.get("key_env", "") or preset.get("key_env", "")),
+        "key_name": str(api.get("key_name", "") or "speech-api"),
+    }
+
+    if args.action == "check":
+        return _check_endpoint("api", entry, as_json=args.json,
+                               label="speech.api")
+
+    # "show"
+    if args.json:
+        print(json.dumps({"provider": provider, "providers": sorted(PROVIDERS),
+                          "selected": cfg["speech"]["backend"] == "api",
+                          **entry}, ensure_ascii=False, indent=2))
+        return 0
+    print(f"{BOLD}speech.api{RESET}")
+    print(f"  provider   {provider or DIM + 'unset' + RESET}")
+    for field in ("base_url", "model", "key_env"):
+        shown = entry[field] or f"{DIM}unset{RESET}"
+        explicit = "" if api.get(field) else f"  {DIM}(from {provider}){RESET}"
+        print(f"  {field:<10} {shown}{explicit if entry[field] else ''}")
+    print(f"  in use     {'yes' if cfg['speech']['backend'] == 'api' else 'no'}")
+    print(f"{DIM}  omavoi speech check      ask the endpoint for its models{RESET}")
+    return 0
 
 
 def cmd_hotkey(args: argparse.Namespace) -> int:
@@ -856,7 +952,8 @@ def cmd_config(args: argparse.Namespace) -> int:
         # config and then falls through on every take, which reads as the LLM
         # step doing nothing rather than as a missing download.
         why = _why_not_that_hotkey(args.key, args.value) \
-            or _why_not_that_llm_model(args.key, args.value)
+            or _why_not_that_llm_model(args.key, args.value) \
+            or _why_not_that_provider(args.key, args.value)
         if why and not getattr(args, "force", False):
             print(f"{RED}{why}{RESET}", file=sys.stderr)
             print(f"{DIM}nothing was changed; repeat with --force to set it anyway"
@@ -1870,6 +1967,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=["list", "set", "rm"])
     p.add_argument("name", nargs="?", help="which key")
     p.set_defaults(func=cmd_secrets)
+
+    p = sub.add_parser("speech", help="the remote speech endpoint")
+    p.add_argument("action", choices=["show", "check"], nargs="?", default="show")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_speech)
 
     p = sub.add_parser("llm", help="the [llm.<name>] entries a mode's steps name")
     # No add or rm: there are three configurations and migrate() folds anything
