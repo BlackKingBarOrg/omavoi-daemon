@@ -419,6 +419,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "base_url": entry.get("base_url", ""),
                     "remote": _is_remote(backend, str(entry.get("base_url", ""))),
                     "key_env": key_env,
+                    "key_name": str(entry.get("key_name", "") or name),
                     "key": secrets.redact(key) if key_env else "",
                     "has_key": bool(key) or not key_env,
                     "used_by": sorted(used_by.get(name, [])),
@@ -437,10 +438,14 @@ def cmd_model(args: argparse.Namespace) -> int:
             # What the backend will actually use: the explicit value, or the
             # provider's default underneath it.
             s_key_env = str(sapi.get("key_env", "") or preset.get("key_env", ""))
-            s_key = secrets.resolve(s_key_env, str(sapi.get("key_name", "") or "speech-api"))
+            # ApiWhisperBackend reads the key as `key_name or provider`, so the
+            # console has to write it under exactly that. It was writing
+            # "speech-api", which nothing would ever have looked up.
+            s_key_name = str(sapi.get("key_name", "") or sprov or "speech-api")
+            s_key = secrets.resolve(s_key_env, s_key_name)
             speech_api = {
                 "provider": sprov,
-                "providers": sorted(PROVIDERS.keys()),
+                "key_name": s_key_name,
                 "base_url": str(sapi.get("base_url", "") or ""),
                 "model": str(sapi.get("model", "") or ""),
                 "key_env": s_key_env,
@@ -742,7 +747,7 @@ def cmd_speech(args: argparse.Namespace) -> int:
         "base_url": str(api.get("base_url", "") or preset.get("base_url", "")),
         "model": str(api.get("model", "") or preset.get("model", "")),
         "key_env": str(api.get("key_env", "") or preset.get("key_env", "")),
-        "key_name": str(api.get("key_name", "") or "speech-api"),
+        "key_name": str(api.get("key_name", "") or provider or "speech-api"),
     }
 
     if args.action == "check":
