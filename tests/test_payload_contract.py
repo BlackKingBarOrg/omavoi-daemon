@@ -18,14 +18,15 @@ import io
 import json
 from contextlib import redirect_stdout
 
-from omavoi import cli, config
+from omavoi import config
+from omavoi.commands import catalogue
 
 
 def payload(home) -> dict:
     args = argparse.Namespace(action="list", rest=[], json=True, force=False)
     buf = io.StringIO()
     with redirect_stdout(buf):
-        assert cli.cmd_model(args) == 0
+        assert catalogue.cmd_model(args) == 0
     return json.loads(buf.getvalue())
 
 
