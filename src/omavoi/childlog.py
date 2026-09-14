@@ -23,24 +23,29 @@ from __future__ import annotations
 import subprocess
 import threading
 from collections import deque
+from typing import Any
 
 
 class ChildLog:
     """Drains a child's stdout so the child can never block writing to it."""
 
-    def __init__(self, proc: subprocess.Popen[bytes], *, keep: int = 400) -> None:
+    def __init__(self, proc: subprocess.Popen[bytes], *, keep: int = 400,
+                 stream: Any = None) -> None:
         self._lines: deque[bytes] = deque(maxlen=keep)
         self._lock = threading.Lock()
         self._proc = proc
+        # Usually stdout. pw-record's stdout is the audio itself, so there it
+        # is stderr that has nobody reading it.
+        self._stream = stream if stream is not None else proc.stdout
         self._thread: threading.Thread | None = None
-        if proc.stdout is not None:
+        if self._stream is not None:
             self._thread = threading.Thread(
                 target=self._pump, name="omavoi-childlog", daemon=True
             )
             self._thread.start()
 
     def _pump(self) -> None:
-        stream = self._proc.stdout
+        stream = self._stream
         if stream is None:
             return
         try:

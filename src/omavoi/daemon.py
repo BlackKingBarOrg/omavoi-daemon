@@ -337,6 +337,11 @@ class Daemon:
     # -- recording ---------------------------------------------------------
 
     def begin(self) -> dict[str, Any]:
+        # Asked before the lock. active_window() shells out to hyprctl with a
+        # one-second timeout, and holding the lock across a subprocess makes
+        # every other caller wait behind it — the key release included, which
+        # is the one thing that must not be late.
+        window = active_window()
         with self._lock:
             if self._state == RECORDING:
                 return {"ok": True, "state": RECORDING, "note": "already recording"}
@@ -348,7 +353,7 @@ class Daemon:
             # spoken before the key registered is already included.
             self._mark = self.audio.mark()
             self._started_at = time.monotonic()
-            self._mode_hint = modes.resolve(self.cfg, active_window(), self.forced_mode).name
+            self._mode_hint = modes.resolve(self.cfg, window, self.forced_mode).name
             self._set_state(RECORDING)
         log.debug("recording started")
         return {"ok": True, "state": RECORDING}
@@ -479,7 +484,15 @@ class Daemon:
                 line = conn.makefile("rb").readline()
                 payload = json.loads(line) if line else {}
                 if str(payload.get("cmd", "")) == "subscribe":
-                    conn.settimeout(None)
+                    # Bounded, not blocking. _broadcast sends under _lock, so
+                    # a subscriber that stops reading — a hung console, a
+                    # suspended shell — fills its buffer, blocks sendall
+                    # forever, and takes the hotkey down with it: begin() and
+                    # end() both wait on that same lock. socket.timeout is an
+                    # OSError, so _broadcast already treats it as dead and
+                    # drops it. A subscriber too slow to keep up is not worth
+                    # a frozen daemon.
+                    conn.settimeout(2.0)
                     conn.sendall(
                         (json.dumps({"ok": True, **self.status()}) + "\n").encode()
                     )

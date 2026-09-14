@@ -22,6 +22,8 @@ from typing import Any
 
 import numpy as np
 
+from .childlog import ChildLog
+
 log = logging.getLogger(__name__)
 
 _CHUNK_FRAMES = 1024  # ~64 ms at 16 kHz
@@ -149,6 +151,15 @@ class RingCapture:
         self._proc = subprocess.Popen(
             self._argv(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0
         )
+        # stdout is the audio and is read below. stderr was read only in the
+        # finally — which is to say, only once this loop had already ended.
+        # A child that fills an unread pipe blocks in write(), and a blocked
+        # pw-record stops producing audio, so the read below never returns and
+        # the finally never runs: a microphone that dies quietly and cannot
+        # recover. It writes almost nothing here in normal use (two bytes in
+        # ten seconds, measured), so this is a small pipe and a long wait
+        # rather than a likely one — but the failure has no way out.
+        errlog = ChildLog(self._proc, keep=80, stream=self._proc.stderr)
         stream = self._proc.stdout
         assert stream is not None
         nbytes = _CHUNK_FRAMES * 2
@@ -164,10 +175,10 @@ class RingCapture:
         finally:
             self._kill()
             if self._proc is not None:
+                err = errlog.text().decode("utf-8", "replace").strip()
+                if err:
+                    log.debug("pw-record: %s", err)
                 if self._proc.stderr is not None:
-                    err = self._proc.stderr.read().decode("utf-8", "replace").strip()
-                    if err:
-                        log.debug("pw-record: %s", err)
                     self._proc.stderr.close()
                 if self._proc.stdout is not None:
                     self._proc.stdout.close()
