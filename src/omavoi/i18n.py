@@ -21,6 +21,11 @@ _ES = "es"
 _JA = "ja"
 _VI = "vi"
 
+# Every language this table carries, English implied. One list, so a guard on
+# ui.language and the console's own pack list cannot disagree about what
+# exists.
+LANGUAGES: tuple[str, ...] = ("en", _ZH, _TH, _DE, _FR, _ES, _JA, _VI)
+
 # en -> {lang: text}
 _TABLE: dict[str, dict[str, str]] = {
     "Proves the pipeline runs. Not usable for real dictation.": {

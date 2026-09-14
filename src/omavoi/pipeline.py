@@ -17,7 +17,8 @@ import shutil
 import time
 from typing import Any
 
-from . import asr, llm, modes, names as names_mod, notify, post
+from . import asr, modes, notify, post
+from . import names as names_mod
 from .audio import Capture
 from .history import History
 from .inject import Injector

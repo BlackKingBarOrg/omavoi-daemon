@@ -16,7 +16,8 @@ import logging
 import selectors
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ def capture(timeout: float = 10.0, explicit: list[str] | None = None) -> str:
     """
     import select
 
-    from evdev import InputDevice, categorize, ecodes, list_devices
+    from evdev import InputDevice, ecodes, list_devices
 
     devices = []
     for path in explicit or list_devices():

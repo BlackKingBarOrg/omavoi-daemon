@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -220,7 +221,7 @@ class NameIndex:
 
     def _find_cjk(self, text: str, entry: NameEntry, key: str) -> Iterable[Hit]:
         width = len(entry.name)
-        for start in range(0, max(0, len(text) - width + 1)):
+        for start in range(max(0, len(text) - width + 1)):
             span = text[start : start + width]
             if not _CJK.search(span):
                 continue
@@ -235,7 +236,7 @@ class NameIndex:
         # try every run of up to four words, longest first.
         max_span = min(4, len(words))
         for size in range(max_span, 0, -1):
-            for i in range(0, len(words) - size + 1):
+            for i in range(len(words) - size + 1):
                 start, end = words[i].start(), words[i + size - 1].end()
                 span = text[start:end]
                 score = _ratio(phonetic_key(span), key)

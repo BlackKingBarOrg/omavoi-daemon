@@ -251,7 +251,8 @@ class LlamaLocalBackend:
 
 def _explain(output: bytes) -> str:
     """The line that matters out of llama.cpp's startup noise."""
-    lines = [l for l in output.decode("utf-8", "replace").splitlines() if l.strip()]
+    lines = [line for line in output.decode("utf-8", "replace").splitlines()
+             if line.strip()]
     for line in lines:
         low = line.lower()
         if "failed to fit" in low or ("out of" in low and "memory" in low):

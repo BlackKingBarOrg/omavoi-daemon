@@ -18,15 +18,12 @@ import shutil
 import socket
 import subprocess
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from .. import notify
+from .. import models, notify
 from ..childlog import ChildLog
-
-from .. import models
 from ..models import GGML
 from .api_whisper import encode_wav
 from .base import NotReady, Segment, Transcript

@@ -124,7 +124,7 @@ def _print_engines(info: dict[str, Any]) -> None:
     llms = engines.get("llm") or []
     if not llms:
         return
-    width = max(len(l["name"]) for l in llms)
+    width = max(len(entry["name"]) for entry in llms)
     for i, llm in enumerate(llms):
         head = f"{BOLD}llm{RESET}       " if i == 0 else "          "
         if llm.get("problem"):
@@ -593,6 +593,60 @@ def _why_not_that_llm_model(key: str, value: str) -> str:
     return ""
 
 
+def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
+    """The values a key accepts, when it accepts a fixed set of them.
+
+    Returns (values, what) or ((), "").
+
+    152 settable keys and four of them were checked. The rest took anything —
+    `speech.backend = nonsens` was written happily and then stopped the daemon
+    from starting at all, and `switching.mode = typo` fell back to default with
+    one line in a journal nobody reads. Every set below is read from wherever
+    the code already keeps it, so this table cannot drift away from the thing
+    it is describing.
+    """
+    from . import asr, i18n
+    from .llm import BACKENDS as LLM_BACKENDS
+
+    parts = key.split(".")
+
+    def at(*shape: str) -> bool:
+        """`llm.*.backend` matches ("llm", "*", "backend")."""
+        return (len(parts) == len(shape)
+                and all(a == "*" or a == b for a, b in zip(shape, parts, strict=True)))
+
+    if key == "speech.backend":
+        return tuple(sorted(asr.BACKENDS)), "a speech engine"
+    if at("llm", "*", "backend"):
+        return tuple(sorted(LLM_BACKENDS)), "an LLM backend"
+    if key == "hotkey.mode":
+        return ("push_to_talk", "toggle"), "a hotkey behaviour"
+    if key == "inject.method" or at("modes", "*", "inject"):
+        return ("auto", "clipboard", "wtype", "xdotool"), "an injection route"
+    if at("modes", "*", "rules", "punctuation"):
+        return ("keep", "strip"), "a punctuation policy"
+    if key == "ui.hud_dwell":
+        return ("always", "changed", "never"), "an overlay dwell"
+    if key == "ui.language":
+        # "" follows the system locale, which is the shipped default.
+        return ("", *i18n.LANGUAGES), "an interface language"
+    if key == "speech.local_whisper.device":
+        return ("auto", "cpu", "cuda"), "a device"
+    if key == "switching.mode":
+        return tuple(sorted(cfg.get("modes", {}))), "a mode that exists"
+    return (), ""
+
+
+def _why_not_that_choice(key: str, value: str) -> str:
+    """Why this value is not one of the ones the key accepts."""
+    cfg = config.load()
+    legal, what = _legal_values(str(key), cfg)
+    if not legal or value in legal:
+        return ""
+    shown = ", ".join(repr(v) if v == "" else v for v in legal)
+    return f"{value!r} is not {what}. One of: {shown}"
+
+
 def _why_not_that_provider(key: str, value: str) -> str:
     """Why `speech.api.provider = value` would not work, or "" if it would.
 
@@ -913,7 +967,7 @@ def cmd_llm(args: argparse.Namespace) -> int:
         for name, entry in sorted(entries.items()):
             by = ", ".join(sorted(used.get(name, []))) or f"{DIM}unused{RESET}"
             print(f"  {name:12s} {entry.get('backend', '?'):14s} "
-                  f"{str(entry.get('model', '')):24s} {by}")
+                  f"{entry.get('model', '')!s:24s} {by}")
         return 0
 
     if args.action == "check":
@@ -958,7 +1012,8 @@ def cmd_config(args: argparse.Namespace) -> int:
         # step doing nothing rather than as a missing download.
         why = _why_not_that_hotkey(args.key, args.value) \
             or _why_not_that_llm_model(args.key, args.value) \
-            or _why_not_that_provider(args.key, args.value)
+            or _why_not_that_provider(args.key, args.value) \
+            or _why_not_that_choice(args.key, args.value)
         if why and not getattr(args, "force", False):
             print(f"{RED}{why}{RESET}", file=sys.stderr)
             print(f"{DIM}nothing was changed; repeat with --force to set it anyway"
@@ -1617,7 +1672,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
             return 1
         inj = reply.get("inject", {})
         win_info = reply.get("window", {})
-        print(f"  injected by  the daemon process")
+        print("  injected by  the daemon process")
         print(f"  window       {win_info.get('class', '?')}  "
               f"xwayland={win_info.get('xwayland')}")
         print(f"  route        {inj.get('method')}  paste_via={inj.get('paste_via') or '—'}")
@@ -1635,7 +1690,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")
         probe = subprocess.run(["xdotool", "getwindowfocus", "getwindowname"],
-                               capture_output=True, timeout=5, env=env)
+                               capture_output=True, timeout=5, env=env, check=False)
         xfocus = (probe.stdout.decode("utf-8", "replace").strip()
                   or probe.stderr.decode("utf-8", "replace").strip() or "?")
 
@@ -1755,7 +1810,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     print(f"\n{BOLD}audio{RESET}")
     try:
-        out = subprocess.run(["pactl", "get-default-source"], capture_output=True, timeout=2)
+        out = subprocess.run(["pactl", "get-default-source"], capture_output=True, timeout=2, check=False)
         source = out.stdout.decode().strip()
         check("default source", bool(source), source or f"{RED}none{RESET}")
     except (subprocess.SubprocessError, OSError) as exc:

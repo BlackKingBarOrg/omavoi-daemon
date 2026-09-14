@@ -188,6 +188,7 @@ class Injector:
             ["xdotool", "type", "--clearmodifiers",
              "--delay", str(self.xdotool_delay_ms), "--", text],
             capture_output=True, timeout=60, env=env,
+            check=False,
         )
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip()
@@ -204,7 +205,7 @@ class Injector:
         if self.wtype_delay_ms:
             argv += ["-d", str(self.wtype_delay_ms)]
         argv.append("-")
-        proc = subprocess.run(argv, input=text.encode(), capture_output=True, timeout=30)
+        proc = subprocess.run(argv, input=text.encode(), capture_output=True, timeout=30, check=False)
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip() or "wtype exited non-zero")
 
@@ -229,7 +230,8 @@ class Injector:
             return None
         try:
             proc = subprocess.run(
-                ["wl-paste", "--no-newline"], capture_output=True, timeout=2
+                ["wl-paste", "--no-newline"], capture_output=True, timeout=2,
+                check=False,
             )
             return proc.stdout if proc.returncode == 0 else b""
         except (subprocess.SubprocessError, OSError):
@@ -259,7 +261,7 @@ class Injector:
             env = dict(os.environ)
             env.setdefault("DISPLAY", ":0")
             proc = subprocess.run(["xdotool", "key", "--clearmodifiers", combo_x],
-                                  capture_output=True, timeout=10, env=env)
+                                  capture_output=True, timeout=10, env=env, check=False)
             if proc.returncode != 0:
                 raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip()
                                    or "xdotool key failed")
@@ -274,7 +276,7 @@ class Injector:
             argv += ["-k", key.lower()]
             for mod in reversed(mods):
                 argv += ["-m", mod.lower()]
-            proc = subprocess.run(["wtype", *argv], capture_output=True, timeout=5)
+            proc = subprocess.run(["wtype", *argv], capture_output=True, timeout=5, check=False)
             if proc.returncode != 0:
                 raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip()
                                    or "wtype paste failed")
@@ -285,7 +287,8 @@ class Injector:
             "hl.dsp.send_shortcut({{ mods = {mods!r}, key = {key!r}, window = 'activewindow' }})"
         ).format(mods=" ".join(mods), key=key).replace("'", '"')
         proc = subprocess.run(
-            ["hyprctl", "dispatch", lua], capture_output=True, timeout=5
+            ["hyprctl", "dispatch", lua], capture_output=True, timeout=5,
+            check=False,
         )
         out = proc.stdout.decode("utf-8", "replace").strip()
         if proc.returncode != 0 or out != "ok":

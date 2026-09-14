@@ -6,8 +6,15 @@ from typing import Any
 
 from .base import Backend, NotReady, Segment, Transcript
 
-__all__ = ["Backend", "NotReady", "Segment", "Transcript", "build", "BACKENDS",
-           "why_unavailable"]
+__all__ = [
+    "BACKENDS",
+    "Backend",
+    "NotReady",
+    "Segment",
+    "Transcript",
+    "build",
+    "why_unavailable",
+]
 
 
 def why_unavailable(name: str) -> str:

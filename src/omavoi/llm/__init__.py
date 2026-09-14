@@ -9,7 +9,7 @@ from .base import LlmBackend, LlmResult
 
 log = logging.getLogger(__name__)
 
-__all__ = ["LlmBackend", "LlmResult", "Registry", "BACKENDS", "ON_MACHINE"]
+__all__ = ["BACKENDS", "ON_MACHINE", "LlmBackend", "LlmResult", "Registry"]
 
 BACKENDS: dict[str, str] = {
     "llama-cpp": "A local llama.cpp / ollama / vLLM server speaking the OpenAI API.",

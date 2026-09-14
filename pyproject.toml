@@ -42,3 +42,49 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omavoi"]
+
+# There were no checks at all until a review found two functions defined twice,
+# each dead copy 50/50 to be the one someone edited next. These are the rules
+# that caught something real here; the line limit is where the code already
+# sits rather than a number to reformat towards.
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PERF", "PIE", "RUF", "DTZ", "PLE", "PLW"]
+ignore = [
+    # Guarded callbacks and probes: this program would rather report a
+    # degraded engine than die on one. Where a cause matters it is logged at
+    # the site, which BLE001 cannot see.
+    "BLE001",
+    # Deliberate: a probe's failure is the answer, not an error.
+    "S110", "S112",
+    # Fullwidth CJK punctuation is the subject matter here, not a typo. The
+    # post-processing rules exist to tell ，。？！ from ,.?! — flagging them as
+    # "ambiguous" buries every other finding under fifty-six of these.
+    "RUF001", "RUF002", "RUF003",
+    # Style, not defects, and each has a reason to stay as written:
+    #   PLW0108  a lambda around a bound method is deliberate indirection in
+    #            the daemon's callbacks, where the target is chosen per mode
+    #   PLW2901  `for x in xs: x = normalise(x)` is the idiom here
+    #   SIM105   a bare try/except pass reads plainer than contextlib.suppress
+    #            in the probes, where the failure is the answer
+    #   B007     an unused loop name is sometimes the clearer name
+    #   PLW0603  one module-level memo in cudaenv, deliberately global
+    #   DTZ006   history timestamps are local time on purpose, for a human
+    "PLW0108", "PLW2901", "SIM105", "B007", "PLW0603", "DTZ006",
+    "PERF102", "PERF401", "SIM102", "UP031",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Argparse dispatch: one long function per command is the shape here.
+"src/omavoi/cli.py" = ["PLR0911", "PLR0912", "PLR0915"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
