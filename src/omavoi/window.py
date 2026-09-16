@@ -55,6 +55,10 @@ def active_window() -> Window:
     )
 
 
+# Unreferenced on purpose: window matching is switched off in the console
+# (ModesView.showWindowMatch) but whole in the daemon, and this is the part
+# that picks a mode from the focused window. A dead-code scan will find it
+# every time, so this is here to say it is waiting rather than abandoned.
 def match_profile(win: Window, profiles: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     """Longest matching key wins, so "org.wezfurlong.wezterm" beats "wez"."""
     haystack = f"{win.cls} {win.title}".lower()

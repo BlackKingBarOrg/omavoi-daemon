@@ -50,10 +50,6 @@ class Mode:
     matched_on: str = ""
 
     @property
-    def punctuation(self) -> str:
-        return str(self.rules.get("punctuation", "keep"))
-
-    @property
     def joiner(self) -> str:
         """What replaces a newline before injection; "keep" leaves them."""
         return str(self.rules.get("joiner", " "))

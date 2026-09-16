@@ -14,7 +14,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import models, paths
+from . import models
 
 
 @dataclass(slots=True)
@@ -107,10 +107,6 @@ def _daemon_reads_the_key() -> bool:
         return False
     hk = (info or {}).get("hotkey") or {}
     return bool(hk.get("enabled")) and bool(hk.get("devices"))
-
-def _in_input_group() -> bool:
-    return _input_group()[1]
-
 
 def _unit_active() -> bool:
     if shutil.which("systemctl") is None:
@@ -291,5 +287,3 @@ def check(cfg: dict[str, Any]) -> Report:
     return Report(steps)
 
 
-def config_written() -> bool:
-    return paths.config_file().exists()

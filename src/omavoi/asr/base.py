@@ -53,20 +53,6 @@ class Transcript:
     def max_no_speech(self) -> float:
         return max((s.no_speech_prob for s in self.segments), default=0.0)
 
-    @property
-    def first_speech_at(self) -> float:
-        """Where the first segment begins.
-
-        Kept because it is worth seeing in a diagnostic, but it is not a
-        measure of when speech started and no warning is built on it any
-        more: whisper.cpp segments from the beginning of the clip, so this
-        was 0.00 on 38 of 40 consecutive takes — every one of which produced
-        text perfectly well. A warning that fires on healthy takes teaches
-        you to ignore it, and then it is not there the once it matters. The
-        onset is measured from the waveform in pipeline.py instead.
-        """
-        return self.segments[0].start if self.segments else 0.0
-
     def warnings(self, *, logprob_floor: float = -1.0) -> list[str]:
         """Human-readable reasons to distrust this transcript."""
         out: list[str] = []

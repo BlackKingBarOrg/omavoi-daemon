@@ -33,39 +33,38 @@ log = logging.getLogger(__name__)
 
 
 
-def _opens_mid_speech(capture: Capture, *, head_ms: float = 120.0,
-                      margin_db: float = 6.0) -> str:
-    """"" if the take opens on room tone, a warning if it opens on speech.
+def _head_level(capture: Capture, *, head_ms: float = 120.0) -> float | None:
+    """The first `head_ms` of the take, in dBFS, or None if unmeasurable.
 
-    The old test asked the transcript where its first segment began, which is
-    where whisper.cpp always begins one — 0.00 on 38 of 40 takes in a row,
-    none of them actually clipped. This asks the only thing that can answer
-    it: whether the first 120 ms is already as loud as the take as a whole. A
-    quiet head is the pre-roll doing its job.
+    Recorded next to the take because it is what the onset warning is built
+    on, and a warning whose evidence is not visible is one you cannot check.
+    The property this replaces claimed to be that evidence and never appeared
+    in a diagnostic at all.
     """
     rate = int(getattr(capture, "rate", 0) or 0)
     samples = getattr(capture, "samples", None)
     if not rate or samples is None or len(samples) < rate // 4:
-        return ""
-    # A floor of its own, so a direct caller gets the same answer the pipeline
-    # does without having to know to check for silence first.
-    floor_db = -50.0
+        return None
     head = samples[: max(1, int(rate * head_ms / 1000.0))]
     if head.size == 0:
-        return ""
+        return None
+    rms = float(np.sqrt(np.mean(np.square(head.astype(np.float64)))))
+    return round(20.0 * math.log10(max(rms, 1e-9)), 1)
 
-    def dbfs(block) -> float:
-        rms = float(np.sqrt(np.mean(np.square(block.astype(np.float64)))))
-        return 20.0 * math.log10(max(rms, 1e-9))
 
-    head_db, whole_db = dbfs(head), dbfs(samples)
-    if whole_db < floor_db:
-        return ""
-    if head_db < whole_db - margin_db:
-        return ""
-    return (f"the take opens at speech level ({head_db:.1f} dBFS against "
-            f"{whole_db:.1f} overall) — the first syllable may be missing; "
-            f"raise audio.preroll_seconds if words are going astray")
+# There was a warning here that compared the take's first 120 ms against the
+# take as a whole and said the onset looked clipped when they matched. It
+# replaced an older one built on whisper's segmentation, which fired on 38 of
+# 40 takes, and it was a real improvement — until a take picked up a video
+# playing in the background. Continuous sound makes the head match the whole
+# whatever the pre-roll did, so it fired again, correctly and uselessly: the
+# take did open at speech level, and nothing had been clipped.
+#
+# Whether the onset survived is not inferable from the waveform once the room
+# is not quiet, which on a machine with a browser open is most of the time.
+# So there is no warning. head_dbfs goes into the record next to rms_dbfs and
+# anyone who suspects a clipped onset can compare them, which is the honest
+# amount to claim.
 
 class Pipeline:
     def __init__(
@@ -129,6 +128,10 @@ class Pipeline:
                 "seconds": round(capture.seconds, 3),
                 "peak_dbfs": round(capture.peak_dbfs, 1),
                 "rms_dbfs": round(capture.rms_dbfs, 1),
+                # The first 120 ms, which is what the onset warning is built
+                # on. Recorded because a warning whose evidence is not
+                # visible is one you cannot check.
+                "head_dbfs": _head_level(capture),
                 "preroll": capture.preroll_seconds,
                 "tail": capture.tail_seconds,
                 "truncated": capture.truncated,
@@ -160,14 +163,6 @@ class Pipeline:
         # reaches back before the keypress, so a healthy take begins with room
         # tone; an opening already at speech level means the buffer window
         # started after the first syllable.
-        # Only on a take that has speech in it. Uniform silence has a head as
-        # loud as its whole and would trip this, but nothing was clipped — the
-        # quiet-input warning above is the right voice for that, and one
-        # problem should not get two.
-        if not quiet:
-            onset = _opens_mid_speech(capture)
-            if onset:
-                warnings.append(onset)
 
         # Resolve where the text is going now: that decides the mode.
         win = window if window is not None else active_window()

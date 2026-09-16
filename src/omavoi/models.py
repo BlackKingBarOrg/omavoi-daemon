@@ -131,10 +131,6 @@ def spec(key: str) -> ModelSpec | None:
     return None
 
 
-def catalog(kind: str = "") -> tuple[ModelSpec, ...]:
-    return tuple(e for e in CATALOG if not kind or e.kind == kind)
-
-
 def model_root() -> Path:
     return paths.data_dir() / "models"
 
