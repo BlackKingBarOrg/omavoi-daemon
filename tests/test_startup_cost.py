@@ -70,7 +70,9 @@ def test_no_console_command_loads_numpy_or_evdev(argv, home):
 
     proc = subprocess.run(
         [sys.executable, "-c", PROBE.format(argv=argv, heavy=HEAVY)],
-        capture_output=True, text=True, timeout=120,
+        # check=False: the assertion below reports the child's stderr, which
+        # is more use than a CalledProcessError with the output swallowed.
+        capture_output=True, text=True, timeout=120, check=False,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     line = [ln for ln in proc.stdout.splitlines() if ln.startswith("LOADED:")]
