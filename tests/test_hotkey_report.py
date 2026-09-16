@@ -17,8 +17,10 @@ from omavoi.hotkey import explain_missing, key_code
 
 def _report(monkeypatch, hotkey_block, **over):
     monkeypatch.setattr(keys, "config", keys.config)
-    from omavoi import daemon as daemon_mod
-    monkeypatch.setattr(daemon_mod, "ping", lambda: {"hotkey": hotkey_block})
+    # Patched on ipc, which is where the client half lives and where
+    # keys.py reads it; daemon.ping is a re-export of this one.
+    from omavoi import ipc
+    monkeypatch.setattr(ipc, "ping", lambda: {"hotkey": hotkey_block})
     return keys._hotkey_report()
 
 

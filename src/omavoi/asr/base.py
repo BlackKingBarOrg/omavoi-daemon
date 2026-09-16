@@ -8,9 +8,15 @@ avg_logprob -1.4, the model was guessing there".
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-import numpy as np
+if TYPE_CHECKING:
+    # Only the `transcribe` signature names it, and annotations are
+    # strings here. Importing it for real put 22 ms of numpy on the
+    # path of every command, including the ones that never see audio:
+    # this module is what `asr/__init__` imports eagerly, and the
+    # backends below it are already loaded on demand.
+    import numpy as np
 
 
 @dataclass(slots=True)

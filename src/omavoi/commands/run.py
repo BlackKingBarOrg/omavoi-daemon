@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from .. import asr, config, daemon
+from .. import asr, config, ipc
 from ..term import DIM, GREEN, RED, RESET, YELLOW
 from ._support import load_wav, log, setup_logging
 from .health import _print_entry
@@ -24,6 +24,11 @@ from .health import _print_entry
 def cmd_daemon(args: argparse.Namespace) -> int:
     cfg = config.load()
     setup_logging(args.log_level or cfg["ui"].get("log_level", "INFO"), to_file=True)
+    # The one command that runs the resident side, and so the one that needs
+    # it imported. Above the try because the except clause names it: an
+    # import failure here should say what failed to import, not NameError.
+    from .. import daemon
+
     try:
         daemon.Daemon(cfg).run()
     except daemon.AlreadyRunning as exc:
@@ -43,7 +48,7 @@ def cmd_daemon(args: argparse.Namespace) -> int:
 
 def cmd_record(args: argparse.Namespace) -> int:
     try:
-        reply = daemon.request({"cmd": args.action})
+        reply = ipc.request({"cmd": args.action})
     except (ConnectionError, OSError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
@@ -57,7 +62,7 @@ def cmd_record(args: argparse.Namespace) -> int:
 
 def cmd_reload(args: argparse.Namespace) -> int:
     try:
-        reply = daemon.request({"cmd": "reload"})
+        reply = ipc.request({"cmd": "reload"})
     except (ConnectionError, OSError) as exc:
         print(f"{RED}{exc}{RESET}", file=sys.stderr)
         return 1
@@ -124,7 +129,7 @@ def cmd_inject(args: argparse.Namespace) -> int:
 
     if args.via_daemon:
         try:
-            reply = daemon.request({"cmd": "inject", "text": text}, timeout=120)
+            reply = ipc.request({"cmd": "inject", "text": text}, timeout=120)
         except (ConnectionError, OSError) as exc:
             print(f"{RED}{exc}{RESET}", file=sys.stderr)
             return 1

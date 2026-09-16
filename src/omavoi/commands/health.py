@@ -12,7 +12,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from .. import __version__, config, daemon, models, paths
+from .. import __version__, config, ipc, models, paths
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 from .catalogue import _print_engines
 
@@ -61,7 +61,7 @@ def _print_entry(entry: dict[str, Any], verbose: bool) -> None:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    info = daemon.ping()
+    info = ipc.ping()
     if info is None:
         if args.json:
             print(json.dumps({"state": "stopped", "text": "", "class": "stopped"}))
@@ -245,7 +245,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         # Asked here rather than reusing the daemon block further down: that
         # one runs after this section, and one extra socket round trip is
         # cheaper than reordering a function that prints in a fixed order.
-        live = (daemon.ping() or {}).get("hotkey") or {}
+        live = (ipc.ping() or {}).get("hotkey") or {}
         bound = live.get("devices") or []
         if bound and live.get("enabled"):
             check(f"{key} read by the daemon", True, f"{len(bound)} device(s)")
@@ -340,7 +340,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             ring.stop()
 
     print(f"\n{BOLD}daemon{RESET}")
-    info = daemon.ping()
+    info = ipc.ping()
     check("running", info is not None,
           f"pid {info['pid']}, {info['state']}" if info else f"{DIM}not running{RESET}")
 

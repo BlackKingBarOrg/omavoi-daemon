@@ -12,7 +12,7 @@ import json
 import sys
 from typing import Any
 
-from .. import config, daemon, models
+from .. import config, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 _MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key")
@@ -50,7 +50,7 @@ def _mode_wants(cfg: dict[str, Any], mode: Any) -> list[dict[str, Any]]:
 
 def _live_model_keys() -> set[str]:
     """What the daemon has resident right now, so it is not double-counted."""
-    info = daemon.ping()
+    info = ipc.ping()
     engines = (info or {}).get("engines") or {}
     live = {str(e.get("model", "")) for e in (engines.get("llm") or []) if e.get("live")}
     speech = engines.get("speech") or {}
@@ -81,7 +81,7 @@ def _mode_fit(cfg: dict[str, Any], mode: Any, engines: dict[str, Any] | None = N
     from .. import gpu
 
     if engines is None:
-        engines = ((daemon.ping() or {}).get("engines") or {})
+        engines = ((ipc.ping() or {}).get("engines") or {})
     wants = _mode_wants(cfg, mode)
     keys = {w["key"] for w in wants}
     return gpu.fits_chain(wants, _live_model_keys(),
@@ -161,7 +161,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
             # Resolved once: ping and nvidia-smi per mode would be a dozen
             # subprocesses for a list of six.
             live = _live_model_keys()
-            engines = ((daemon.ping() or {}).get("engines") or {})
+            engines = ((ipc.ping() or {}).get("engines") or {})
             rows = []
             for name in modes_mod.names(cfg):
                 mode = modes_mod.resolve(cfg, None, forced=name)
@@ -218,7 +218,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
         # moment, and only the daemon's answer is the one that types.
         live, reachable = "", True
         try:
-            live = str(daemon.request({"cmd": "status"}, timeout=3).get("mode", ""))
+            live = str(ipc.request({"cmd": "status"}, timeout=3).get("mode", ""))
         except (ConnectionError, OSError):
             reachable = False
         print(f"{mode.name}  {DIM}window={win.cls or '?'} "

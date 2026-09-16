@@ -16,6 +16,7 @@ from contextlib import redirect_stdout
 import pytest
 
 from omavoi import daemon as daemon_mod
+from omavoi import ipc
 from omavoi.commands import keys
 
 
@@ -25,7 +26,7 @@ def _run(monkeypatch, reply, *, raises=None):
         if raises is not None:
             raise raises
         return reply
-    monkeypatch.setattr(daemon_mod, "request", fake_request)
+    monkeypatch.setattr(ipc, "request", fake_request)
     args = argparse.Namespace(action="capture", timeout=2.0, json=True)
     buf = io.StringIO()
     with redirect_stdout(buf):

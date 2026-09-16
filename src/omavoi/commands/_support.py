@@ -12,8 +12,10 @@ import subprocess
 import sys
 import wave
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 from .. import paths
 
@@ -36,6 +38,12 @@ def setup_logging(level: str = "INFO", to_file: bool = False) -> None:
 
 def load_wav(path: Path, want_rate: int = 16000) -> tuple[np.ndarray, int]:
     """Read an audio file to float32 mono at `want_rate`, via ffmpeg if needed."""
+    # numpy costs 30 ms of the CLI's 76 ms floor and only this function
+    # needs it, so every command that never touches audio was paying for
+    # it. The annotations are strings under `from __future__`, so the
+    # signature does not need it at import time either.
+    import numpy as np
+
     try:
         with wave.open(str(path), "rb") as wav:
             if wav.getnchannels() == 1 and wav.getsampwidth() == 2 and wav.getframerate() == want_rate:

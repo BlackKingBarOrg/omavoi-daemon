@@ -100,9 +100,9 @@ def _daemon_reads_the_key() -> bool:
     evidence there is when there is nothing to ask.
     """
     try:
-        from . import daemon as daemon_mod
+        from . import ipc
 
-        info = daemon_mod.ping()
+        info = ipc.ping()
     except Exception:
         return False
     hk = (info or {}).get("hotkey") or {}

@@ -9,7 +9,6 @@ import signal
 import socket
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 from . import asr, config, modes, notify, paths
@@ -17,6 +16,7 @@ from .audio import RingCapture
 from .history import History
 from .hotkey import HotkeyListener, HotkeyUnavailable
 from .inject import Injector
+from .ipc import ping, request  # noqa: F401  (re-export)
 from .pipeline import Pipeline
 from .window import active_window
 
@@ -34,36 +34,6 @@ IDLE, RECORDING, BUSY = "idle", "recording", "transcribing"
 
 class AlreadyRunning(RuntimeError):
     pass
-
-
-def ping(sock_path: Path | None = None, timeout: float = 1.0) -> dict[str, Any] | None:
-    """Ask a running daemon for its status. None if nothing is listening."""
-    sock_path = sock_path or paths.socket_file()
-    if not sock_path.exists():
-        return None
-    try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-            client.settimeout(timeout)
-            client.connect(str(sock_path))
-            client.sendall(json.dumps({"cmd": "status"}).encode() + b"\n")
-            data = client.makefile("rb").readline()
-        return json.loads(data) if data else None
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def request(payload: dict[str, Any], timeout: float = 30.0) -> dict[str, Any]:
-    sock_path = paths.socket_file()
-    if not sock_path.exists():
-        raise ConnectionError("the omavoi daemon is not running (start it with `omavoi daemon`)")
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(timeout)
-        client.connect(str(sock_path))
-        client.sendall(json.dumps(payload).encode() + b"\n")
-        line = client.makefile("rb").readline()
-    if not line:
-        raise ConnectionError("the daemon did not answer")
-    return json.loads(line)
 
 
 class Daemon:

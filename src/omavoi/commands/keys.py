@@ -45,7 +45,7 @@ def _hotkey_report() -> dict[str, Any]:
     import grp
     import os
 
-    from .. import daemon as daemon_mod
+    from .. import ipc
     from ..hotkey import HotkeyUnavailable, explain_missing, key_code
 
     cfg = config.load()
@@ -76,7 +76,7 @@ def _hotkey_report() -> dict[str, Any]:
 
     out["devices_problem"] = explain_missing(code, want)
 
-    info = daemon_mod.ping()
+    info = ipc.ping()
     if info is None:
         out["daemon"] = "not running"
     else:
@@ -185,13 +185,13 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
     # in has no device access, and the console's "press a key" button is a
     # child of that session — so the button failed on exactly the machines
     # where rebinding was the thing you were trying to do.
-    from .. import daemon as daemon_mod
+    from .. import ipc
 
     # request() raises rather than returning None when there is no socket, and
     # a capture needs longer than its default read window allows for.
     reply: dict[str, Any] | None
     try:
-        reply = daemon_mod.request({"cmd": "capture", "timeout": args.timeout},
+        reply = ipc.request({"cmd": "capture", "timeout": args.timeout},
                                    timeout=args.timeout + 10.0)
     except (ConnectionError, OSError, ValueError):
         reply = None

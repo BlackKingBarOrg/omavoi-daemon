@@ -11,7 +11,7 @@ import json
 import sys
 from typing import Any
 
-from .. import asr, config, daemon, models
+from .. import asr, config, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 
@@ -132,7 +132,7 @@ def cmd_model(args: argparse.Namespace) -> int:
             # which one is loaded, and the two differ after every edit until a
             # restart. Absent daemon leaves `engines` null rather than implying
             # nothing is running.
-            live = daemon.ping()
+            live = ipc.ping()
             engines = (live or {}).get("engines") or {}
             speech_now = engines.get("speech") or {}
             running_speech = str(speech_now.get("model", "")) if speech_now.get("live") else ""
