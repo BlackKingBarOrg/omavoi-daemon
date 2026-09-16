@@ -204,8 +204,14 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "remote": _is_remote(backend, str(entry.get("base_url", ""))),
                     "key_env": key_env,
                     "key_name": str(entry.get("key_name", "") or name),
-                    "key": secrets.redact(key) if key_env else "",
-                    "has_key": bool(key) or not key_env,
+                    # Two facts, because one name was answering both and
+                    # getting one of them wrong: `has_key` is whether a key
+                    # actually resolves, and `ready` is whether this endpoint
+                    # still needs something. They differ for an endpoint that
+                    # wants no key, where the old single flag said true and
+                    # the console rendered it as "a key is stored".
+                    "has_key": bool(key),
+                    "ready": bool(key) or not key_env,
                     # Which of the two it came from. The environment wins over
                     # the file, so a stale variable silently beats the key you
                     # just pasted — and "a key is stored" said nothing about
@@ -238,8 +244,8 @@ def cmd_model(args: argparse.Namespace) -> int:
                 "base_url": str(sapi.get("base_url", "") or ""),
                 "model": str(sapi.get("model", "") or ""),
                 "key_env": s_key_env,
-                "key": secrets.redact(s_key) if s_key_env else "",
-                "has_key": bool(s_key) or not s_key_env,
+                "has_key": bool(s_key),
+                "ready": bool(s_key) or not s_key_env,
                 "key_source": secrets.source_of(s_key_env, s_key_name),
                 # Shown greyed as the value that applies when the field is
                 # left empty, so a preset is visible rather than magic.
@@ -398,8 +404,7 @@ def _check_endpoint(name: str, entry: dict[str, Any], *, as_json: bool = False,
                 body = r.json()
                 got = body.get("data") if isinstance(body, dict) else body
                 ids = [str(m.get("id", "")) for m in (got or []) if isinstance(m, dict)]
-                out = {"ok": True, "status": r.status_code, "models": [i for i in ids if i],
-                       "key": secrets.redact(key) if key_env else ""}
+                out = {"ok": True, "status": r.status_code, "models": [i for i in ids if i]}
         except httpx.HTTPError as exc:
             out = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         except ValueError:

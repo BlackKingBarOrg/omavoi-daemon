@@ -70,9 +70,49 @@ def test_the_console_is_told_where_the_speech_key_lives(home):
     assert "speech_api" in p, "the remote speech endpoint has no payload"
     backend = ApiWhisperBackend(config.load())
     assert p["speech_api"]["key_name"] == backend.key_name
-    for field in ("base_url", "model", "key_env", "has_key",
+    for field in ("base_url", "model", "key_env", "has_key", "ready",
                   "default_base_url", "default_model"):
         assert field in p["speech_api"], f"speech_api has no {field}"
+
+
+def test_has_key_means_a_key_and_ready_means_nothing_is_missing(home):
+    """One flag was answering two questions, and lying about one of them.
+
+    `has_key` drives the console's "a key is stored" label; `ready` drives
+    whether the endpoint panel opens itself because nothing is configured.
+    They were the same field, defined as `bool(key) or not key_env` — so an
+    endpoint that needs no key reported that a key was stored, and a custom
+    base_url with no key and no key_env reported the same. Someone reading
+    "a key is stored" then got a 401 from an endpoint the console had just
+    called configured.
+
+    No key resolves in a fresh home, so has_key must be false everywhere
+    here; ready may be true, and that is exactly the difference.
+    """
+    p = payload(home)
+    endpoints = [("speech_api", p["speech_api"])]
+    endpoints += [(e["name"], e) for e in p["llm"]]
+    for name, e in endpoints:
+        if "has_key" not in e:
+            continue
+        assert e["has_key"] is False, (
+            f"{name} claims a key with nothing in the environment or the file"
+        )
+        assert "ready" in e, f"{name} has has_key but no ready"
+
+
+def test_no_payload_carries_a_key_value(home):
+    """Not even a redacted one, and nothing ever read it.
+
+    Three payloads carried `key` as `sk-…abcd`. The console never looked at
+    it — it reads key_source and has_key — so it was a secret-shaped value
+    travelling through a JSON blob that lands in logs and screenshots for no
+    reader at all.
+    """
+    p = payload(home)
+    blobs = [p["speech_api"], *p["llm"]]
+    for blob in blobs:
+        assert "key" not in blob, f"a key value is still in {blob.get('name', 'speech_api')}"
 
 
 def test_llm_entries_say_where_their_key_lives_too(home):
