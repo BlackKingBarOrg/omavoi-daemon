@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 
 
 def _write_wav(path: Path, samples: Any, rate: int) -> None:
+    """A recording of someone's voice, so 0600 like everything beside it."""
     import numpy as np
 
     pcm = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
@@ -32,6 +33,10 @@ def _write_wav(path: Path, samples: Any, rate: int) -> None:
         wav.setsampwidth(2)
         wav.setframerate(rate)
         wav.writeframes(pcm.tobytes())
+    # After, not before: the wave module opens the file itself, so there is
+    # no fd to hand it. The window is one write long and the directory is
+    # 0700, which closes it from the outside.
+    paths.private_file(path)
 
 
 class History:
@@ -52,7 +57,7 @@ class History:
         entry.setdefault("id", f"{int(entry['ts'] * 1000):x}")
 
         if samples is not None and samples.size and self.keep_audio > 0:
-            self.audio_dir.mkdir(parents=True, exist_ok=True)
+            paths.private_dir(self.audio_dir)
             wav_path = self.audio_dir / f"{entry['id']}.wav"
             try:
                 _write_wav(wav_path, samples, rate)
@@ -60,8 +65,11 @@ class History:
             except OSError as exc:
                 log.debug("could not store the recording: %s", exc)
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as fh:
+        # Every sentence ever dictated lives in this file. It was created at
+        # whatever umask said, which on Omarchy is 0644.
+        paths.private_dir(self.path.parent)
+        paths.private_file(self.path)
+        with paths.open_private(self.path, "a") as fh:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
         self._trim()
@@ -74,13 +82,17 @@ class History:
             return
         if len(lines) > self.keep:
             kept = lines[-self.keep :]
+            # The replacement carries its own mode, so this has to be
+            # private too or a trim undoes the line above.
             tmp = self.path.with_suffix(".jsonl.tmp")
-            tmp.write_text("\n".join(kept) + "\n", encoding="utf-8")
+            with paths.open_private(tmp, "w") as fh:
+                fh.write("\n".join(kept) + "\n")
             tmp.replace(self.path)
             lines = kept
 
         if self.keep_audio <= 0 or not self.audio_dir.is_dir():
             return
+        paths.private_dir(self.audio_dir)
         # Keep WAVs only for the most recent takes.
         live = set()
         for line in lines[-self.keep_audio :]:
@@ -96,6 +108,11 @@ class History:
                     path.unlink()
                 except OSError:
                     pass
+            else:
+                # Recordings written before this was set keep the mode they
+                # were created with, and only the new ones pass through
+                # _write_wav. This pass already visits every one of them.
+                paths.private_file(path)
 
     def entries(self, limit: int = 20) -> list[dict[str, Any]]:
         return list(self.iter_entries())[-limit:]

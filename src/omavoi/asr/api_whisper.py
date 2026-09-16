@@ -169,7 +169,13 @@ class ApiWhisperBackend:
         if response.status_code >= 400:
             # Never echo the body wholesale — some providers reflect the key.
             raise RuntimeError(
-                f"{self.provider} returned {response.status_code}: {response.text[:200]}"
+                f"{self.provider} returned {response.status_code}: "
+                # Some providers put the key back in the error that says it
+                # is wrong — "Incorrect API key provided: sk-…" — and this
+                # string reaches the take's warnings, history.jsonl and a
+                # desktop notification. Truncating did not help: the key is
+                # at the front of that sentence.
+                + secrets.scrub(response.text[:200], self._key)
             )
 
         payload = response.json()

@@ -19,7 +19,7 @@ import subprocess
 import time
 from typing import Any
 
-from .. import gpu, models
+from .. import gpu, models, secrets
 from ..childlog import ChildLog
 from .base import LlmResult
 
@@ -233,7 +233,11 @@ class LlamaLocalBackend:
             if response.status_code >= 400:
                 return LlmResult("", self.model_key, self.backend,
                                  time.monotonic() - started,
-                                 error=f"HTTP {response.status_code}: {response.text[:160]}")
+                                 # No key on a local server, but the body
+                                 # is stored either way and the shapes cost
+                                 # nothing to check for.
+                                 error=f"HTTP {response.status_code}: "
+                                       + secrets.scrub(response.text[:160]))
             payload = response.json()
             # `content` is null on more endpoints than it looks: a reasoning
             # model that puts its answer in reasoning_content, a response cut

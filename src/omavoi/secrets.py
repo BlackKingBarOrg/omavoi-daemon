@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import stat
 import tomllib
 
@@ -87,6 +88,41 @@ def resolve(key_env: str = "", key_name: str = "") -> str:
     if key_env and key_env in stored:
         return stored[key_env]
     return ""
+
+
+# Shapes that are a credential wherever they appear: the vendor prefixes,
+# and a long bearer-looking run. Deliberately not a general high-entropy
+# hunt — that flags model ids and base64 audio and teaches people to ignore
+# it. Anchored on a word boundary so it does not eat half of a URL path.
+_KEYISH = re.compile(
+    r"\b("
+    r"sk-[A-Za-z0-9_-]{12,}"          # openai, anthropic, deepseek, many more
+    r"|gsk_[A-Za-z0-9_-]{12,}"        # groq
+    r"|xai-[A-Za-z0-9_-]{12,}"        # xai
+    r"|AIza[A-Za-z0-9_-]{20,}"        # google
+    r"|hf_[A-Za-z0-9]{12,}"           # hugging face
+    r"|Bearer\s+[A-Za-z0-9._-]{16,}"
+    r")"
+)
+
+
+def scrub(text: str, *known: str) -> str:
+    """Take credentials out of something about to be stored or shown.
+
+    An HTTP error body goes into the take's warnings, into history.jsonl and
+    into a desktop notification, and some providers reflect the key back in
+    the error that says it is wrong: "Incorrect API key provided: sk-...".
+    Truncating the body to 160 characters does not help, because the key is
+    at the front of that sentence.
+
+    `known` is for the values this process actually holds, which is the only
+    reliable half. The pattern above catches the rest, including a key from
+    a provider whose error we have never seen.
+    """
+    for value in known:
+        if value and len(value) >= 8:
+            text = text.replace(value, redact(value))
+    return _KEYISH.sub(lambda m: redact(m.group(0)), text)
 
 
 def redact(value: str) -> str:

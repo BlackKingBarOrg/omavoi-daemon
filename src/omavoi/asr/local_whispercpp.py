@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     import numpy as np
 
 
-from .. import models, notify
+from .. import models, notify, secrets
 from ..childlog import ChildLog
 from ..models import GGML
 from .api_whisper import encode_wav
@@ -320,7 +320,8 @@ class WhisperCppBackend:
         elapsed = time.monotonic() - started
 
         if response.status_code >= 400:
-            raise RuntimeError(f"whisper.cpp returned {response.status_code}: {response.text[:200]}")
+            raise RuntimeError(f"whisper.cpp returned {response.status_code}: "
+                               + secrets.scrub(response.text[:200]))
 
         payload = response.json()
         segments = [

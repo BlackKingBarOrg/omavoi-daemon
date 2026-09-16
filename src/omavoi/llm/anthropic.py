@@ -84,7 +84,8 @@ class AnthropicBackend:
             )
             if response.status_code >= 400:
                 return LlmResult("", self.model, self.backend, time.monotonic() - started,
-                                 error=f"HTTP {response.status_code}: {response.text[:160]}")
+                                 error=f"HTTP {response.status_code}: "
+                                       + secrets.scrub(response.text[:160], key))
             payload = response.json()
             parts = [
                 block.get("text", "")

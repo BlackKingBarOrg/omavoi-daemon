@@ -25,8 +25,15 @@ log = logging.getLogger("omavoi")
 def setup_logging(level: str = "INFO", to_file: bool = False) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     if to_file:
-        paths.state_dir().mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(paths.log_file(), encoding="utf-8"))
+        # The log has lines like `typed in 0.59s [default]: <what you said>`,
+        # so it is as private as the history beside it. FileHandler opens the
+        # file itself, hence tighten-after rather than create-private; the
+        # directory is 0700, which closes the window from the outside.
+        paths.private_dir(paths.state_dir())
+        log_path = paths.log_file()
+        paths.private_file(log_path)
+        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+        paths.private_file(log_path)
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",

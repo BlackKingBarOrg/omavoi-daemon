@@ -154,7 +154,24 @@ systemctl --user daemon-reload && systemctl --user restart omavoid
 `/run` is cleared at boot, so this disappears on its own — by which time the
 login itself has the group and the override would only be noise. It sets the
 daemon's *primary* group to `input`; the only visible effect is the group
-owner on files the daemon writes under `~/.local/state/omavoi`.
+owner on files the daemon writes under `~/.local/state/omavoi`, which no
+longer matters now that those are 0600 — see below.
+
+## What it writes, and who can read it
+
+| | | |
+|---|---|---|
+| `~/.config/omavoi/config.toml` | 0644 | settings only; safe to paste into an issue |
+| `~/.config/omavoi/secrets.toml` | 0600 | API keys, and nothing else ever goes here |
+| `~/.local/state/omavoi/` | 0700 | |
+| `~/.local/state/omavoi/history.jsonl` | 0600 | every take's text, raw transcript and numbers |
+| `~/.local/state/omavoi/omavoi.log` | 0600 | includes the text of each take |
+| `~/.cache/omavoi/recordings/*.wav` | 0600 | the last `history.keep_audio` recordings |
+
+The history and the log are the transcript of everything you have dictated,
+so they are as private as the key file. `history.enabled = false` turns the
+first off; `history.keep_audio = 0` stops storing audio. An install from
+before this was set is tightened on its next take.
 
 Note that your shell still cannot read a device after this, so
 `omavoi hotkey capture` — which reads a keypress in the foreground — will not

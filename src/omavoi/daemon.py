@@ -132,7 +132,8 @@ class Daemon:
         self._state = state
         # A plain file so waybar/omarchy-shell can poll without a socket client.
         try:
-            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            # The state dir, which also holds the history and the log.
+            paths.private_dir(self.state_file.parent)
             self.state_file.write_text(state + "\n", encoding="utf-8")
         except OSError:
             pass
