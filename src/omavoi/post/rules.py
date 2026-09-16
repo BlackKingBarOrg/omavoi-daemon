@@ -17,7 +17,21 @@ _LATIN = r"A-Za-z0-9"
 
 _CJK_THEN_LATIN = re.compile(rf"([{_CJK}])([{_LATIN}])")
 _LATIN_THEN_CJK = re.compile(rf"([{_LATIN}])([{_CJK}])")
-_SENTENCE_SPLIT = re.compile(r"(?<=[。．.！!？?；;])\s*")
+# Zero-width, so the whitespace between sentences belongs to the chunk after
+# it and "".join puts the text back exactly as it came.
+#
+# It used to be `(?<=[...])\s*`, which consumed that whitespace — and both
+# callers rejoin with "". So every multi-sentence Latin-script take came out
+# with the spaces gone:
+#
+#   "Hello there. How are you?"  ->  "Hello there.How are you?"
+#   "Wait! What happened?"       ->  "Wait!What happened?"
+#
+# on every mode, because both rules that use this run by default. CJK hid it:
+# 。 carries its own spacing, so there was no space there to lose. And the
+# change was reported as "hallucinations", naming a rule that had dropped
+# nothing — which is what made it hard to see in `omavoi last`.
+_SENTENCE_SPLIT = re.compile(r"(?<=[。．.！!？?；;])(?!$)")
 _TRAILING_PUNCT = re.compile(r"[。．.，,、；;：:！!？?\s]+$")
 _WS = re.compile(r"[^\S\n]{2,}")
 _TERMINAL = "。．.！!？?；;…"
@@ -139,6 +153,8 @@ def strip_fillers(text: str, fillers_zh: list[str], fillers_en: list[str]) -> st
     if not text:
         return text
 
+    before = text
+
     zh = [re.escape(f) for f in fillers_zh if f.strip()]
     if zh:
         boundary = r"[，,。．.！!？?；;：:\s]"
@@ -153,11 +169,43 @@ def strip_fillers(text: str, fillers_zh: list[str], fillers_en: list[str]) -> st
     if en:
         text = re.sub(rf"\b(?:{'|'.join(en)})\b[,\s]*", "", text, flags=re.IGNORECASE)
 
-    text = re.sub(r"^[，,、。．.；;：:\s]+", "", text)
-    text = re.sub(r"([，,、])\s*(?=[，,。．.！!？?])", "", text)
+    # Everything below tidies up after a removal, and everything below used to
+    # run whether or not one happened — so on a take with no filler in it at
+    # all, and every mode has this rule on:
+    #
+    #   getUserName   -> GetUserName      an identifier, recapitalised
+    #   .gitignore    -> Gitignore        the dot gone and then recapitalised
+    #   ./configure   -> /configure       the dot gone
+    #   def main():   -> Def main():
+    #   hello world   -> Hello world
+    #
+    # and `omavoi last` labelled the change "fillers", which is the part that
+    # made it hard to see: the label named a rule that had done nothing.
+    # Decided here, before any whitespace tidying: `text != before` after a
+    # .strip() is also true of a take that merely arrived with a leading
+    # space, and that is not a removal.
+    removed = text != before
+
+    if removed:
+        # The punctuation the filler was sitting in front of: "Um, hello"
+        # leaves ", hello", and "嗯，我" leaves "，我".
+        text = re.sub(r"^[，,、。．.；;：:\s]+", "", text)
+        # And the comma it was sitting between: 嗯，那个，我 leaves ，，我.
+        text = re.sub(r"([，,、])\s*(?=[，,。．.！!？?])", "", text)
+
+    # Whitespace hygiene, which is true of any transcript: whisper does not
+    # produce aligned columns, and a leading space is never meant.
     text = _WS.sub(" ", text).strip()
-    # Removing a leading "Um, " leaves the sentence starting lowercase.
-    if text[:1].islower() and text[:1].isascii():
+
+    # Removing a leading "Um, " leaves the sentence starting lowercase — so
+    # only when the removal was at the front. "it was, um, broken" lost a
+    # filler from the middle and has no business being recapitalised, and a
+    # take that simply begins in lower case is how people say identifiers,
+    # flags and paths. Comparing the first character is deliberately
+    # conservative: "um, umbrella" keeps its lower case, which is the
+    # direction to be wrong in.
+    head_changed = removed and before.strip()[:1] != text[:1]
+    if head_changed and text[:1].islower() and text[:1].isascii():
         text = text[0].upper() + text[1:]
     return text
 
