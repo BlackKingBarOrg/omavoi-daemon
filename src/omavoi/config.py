@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -490,16 +491,26 @@ def validate(cfg: dict[str, Any]) -> list[str]:
     # "hotkey unavailable" once at startup and then ran with no hotkey at all,
     # which looks exactly like a broken microphone.
     key = str(cfg["hotkey"].get("key", ""))
-    if key:
+    # Checked only where evdev is already loaded, which is not a shortcut but
+    # the whole of the answer to "who reads this warning".
+    #
+    # Every command calls config.load, which calls this, and `from evdev
+    # import ecodes` costs 25 ms — there is no cheap submodule, importing any
+    # part of it runs the package. So `config show`, `dict list` and `names
+    # list` each paid 25 ms to tell someone their keyboard shortcut was
+    # misspelled, which is not a thing any of them is doing.
+    #
+    # Everything that could act on it has evdev loaded already: the daemon
+    # imports it to bind the key, `hotkey check` and `doctor` import it to
+    # diagnose exactly this, and `config set hotkey.key` refuses a bad name
+    # outright, so a wrong one can now only arrive by hand-editing the file.
+    if key and "evdev" in sys.modules:
         from .hotkey import HotkeyUnavailable, key_code
 
         try:
             key_code(key)
         except HotkeyUnavailable as exc:
             problems.append(f"hotkey.key={key!r} is not an evdev key ({exc})")
-        except ModuleNotFoundError:
-            # No evdev installed; setup reports that separately.
-            pass
     if cfg["audio"]["rate"] != 16000:
         problems.append("whisper needs 16000 Hz; audio.rate has been changed")
     if cfg["audio"]["preroll_seconds"] < 0:

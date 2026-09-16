@@ -106,7 +106,17 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
         r = _hotkey_report()
         if args.json:
             print(json.dumps(r, ensure_ascii=False, indent=2))
-            return 0 if r.get("matches") and not r.get("devices_problem") else 1
+            # The same question the text output answers: is the daemon reading
+            # the configured key. `devices_problem` describes *this* process's
+            # access to /dev/input, and keying the exit status off it failed on
+            # every working machine where the daemon holds the input group and
+            # the shell does not — which is every machine where the group was
+            # granted after login, including the one this was written on. The
+            # text path demoted that to a parenthetical; the exit code was the
+            # sixth place in this program to report the checking process's
+            # state instead of the daemon's. The field stays in the payload;
+            # it is real, it just is not the answer.
+            return 0 if r.get("listener") and r.get("matches") else 1
 
         def line(ok: bool, text: str) -> None:
             mark = f"{GREEN}ok{RESET}  " if ok else f"{RED}no{RESET}  "

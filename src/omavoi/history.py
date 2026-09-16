@@ -15,16 +15,17 @@ import time
 import wave
 from collections.abc import Iterator
 from pathlib import Path
+from statistics import median
 from typing import Any
-
-import numpy as np
 
 from . import paths
 
 log = logging.getLogger(__name__)
 
 
-def _write_wav(path: Path, samples: np.ndarray, rate: int) -> None:
+def _write_wav(path: Path, samples: Any, rate: int) -> None:
+    import numpy as np
+
     pcm = (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2")
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
@@ -42,7 +43,7 @@ class History:
         self.path = paths.history_file()
         self.audio_dir = paths.recordings_dir()
 
-    def record(self, entry: dict[str, Any], samples: np.ndarray | None = None,
+    def record(self, entry: dict[str, Any], samples: Any = None,
                rate: int = 16000) -> dict[str, Any]:
         if not self.enabled:
             return entry
@@ -137,7 +138,11 @@ class History:
             "count": len(entries),
             "empty": empties,
             "empty_rate": round(empties / len(entries), 3),
-            "median_rtf": round(float(np.median(rtfs)), 4) if rtfs else None,
-            "median_rms_dbfs": round(float(np.median(rms)), 1) if rms else None,
+            # statistics.median, not numpy's: these are lists of Python
+            # floats, both take the mean of the middle two on an even count,
+            # and one of them is in the stdlib. numpy is still imported by
+            # _write_wav, where there is an actual array to convert.
+            "median_rtf": round(median(rtfs), 4) if rtfs else None,
+            "median_rms_dbfs": round(median(rms), 1) if rms else None,
             "inject_methods": injects,
         }

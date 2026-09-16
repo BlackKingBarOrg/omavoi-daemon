@@ -54,7 +54,6 @@ def cmd_dict(args: argparse.Namespace) -> int:
 
 def cmd_names(args: argparse.Namespace) -> int:
     from .. import names as names_mod
-    from ..history import History
 
     cfg = config.load()
     entries = cfg.setdefault("dictionary", {}).setdefault("names", [])
@@ -108,6 +107,11 @@ def cmd_names(args: argparse.Namespace) -> int:
         return 0
 
     if args.action in ("dryrun", "enable"):
+        # Only this branch reads past takes. It was imported at the top of
+        # the function, so `names list` and `names add` each pulled
+        # history — and numpy behind it — to do nothing with either.
+        from ..history import History
+
         texts = [e.get("raw_text") or "" for e in History(cfg).iter_entries()]
         texts = [t for t in texts if t.strip()]
         if not texts:
