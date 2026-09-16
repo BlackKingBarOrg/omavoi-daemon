@@ -121,13 +121,34 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             print(f"{DIM}  omavoi hotkey capture   — press the key you want{RESET}")
             return 1
         line(True, f"{r['configured']} is a real evdev key (code {r['code']})")
+        # The daemon is asked first, because the daemon is the thing that has
+        # to work. Everything below this is about *this* process's access to
+        # the devices, which is only ever evidence about the daemon's — and it
+        # can be wrong in both directions. It was wrong here: the daemon was
+        # started through `newgrp` and had the group, this shell did not, and
+        # the check announced a broken hotkey over a working one.
+        if r.get("listener"):
+            line(True, "the daemon is reading it on: "
+                       + ", ".join(r.get("bound_devices") or []))
+            if not r.get("matches"):
+                line(False, f"but on {r.get('bound')!r}, not {r['configured']!r}"
+                            " — it has not picked up the change")
+                print(f"{DIM}  systemctl --user restart omavoid{RESET}")
+                return 1
+            if not r.get("group_held"):
+                print(f"{DIM}  (this shell cannot read a device itself — the "
+                      f"daemon was started with the group and this login was "
+                      f"not. Only affects tools run from here.){RESET}")
+            return 0
 
-        # The group and the devices are one question, not two: with no group
-        # nothing opens, so printing both made the same sentence appear twice
-        # and put a "restart the daemon" underneath it that could not have
-        # helped. The reason the key cannot be read is said once, and the
-        # daemon is not consulted at all — every answer it could give is a
-        # consequence of this one.
+        if r.get("daemon") != "running":
+            line(False, "the daemon is not running")
+            print(f"{DIM}  systemctl --user start omavoid{RESET}")
+            return 1
+        line(False, "the daemon is running and reading no device")
+
+        # Why not. This process's own access is the best evidence available,
+        # and the caveat above is why it is phrased as evidence.
         if not r.get("group_listed"):
             line(False, "you are not in the `input` group, so not one keyboard "
                         "can be opened")
@@ -135,35 +156,22 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             return 1
         if not r.get("group_held"):
             line(False, "you are in the `input` group, but this login started "
-                        "before that — nothing in this session can read a key")
-            print(f"{DIM}  log out and back in. Nothing else will do it: a group is "
-                  f"granted at login, and restarting the daemon keeps the same "
-                  f"session.{RESET}")
+                        "before that")
+            print(f"{DIM}  log out and back in — a group is granted at login "
+                  f"and cannot be added to a session already running.{RESET}")
+            print(f"{DIM}  To avoid that: start the daemon through `newgrp "
+                  f"input`, which is setuid root and re-reads /etc/group, so it "
+                  f"gets the group without a new login. README: \"the input "
+                  f"group\".{RESET}")
             return 1
-        line(True, "in the `input` group, and this session holds it")
 
         dp = r.get("devices_problem") or ""
-        line(not dp, dp or f"a device can emit {r['configured']}")
         if dp:
+            line(False, dp)
             print(f"{DIM}  omavoi hotkey capture   — press a key that exists here{RESET}")
             return 1
-
-        if r.get("daemon") != "running":
-            line(False, "the daemon is not running")
-            print(f"{DIM}  systemctl --user start omavoid{RESET}")
-            return 1
-        if not r.get("listener"):
-            line(False, "the daemon is running and reading no device")
-            print(f"{DIM}  systemctl --user restart omavoid{RESET}")
-            return 1
-        if not r.get("matches"):
-            line(False, f"the daemon is listening on {r.get('bound')!r}, not "
-                        f"{r['configured']!r} — it did not pick up the change")
-            print(f"{DIM}  systemctl --user restart omavoid{RESET}")
-            return 1
-        line(True, "the daemon is listening on it: "
-                   + ", ".join(r.get("bound_devices") or []))
-        return 0
+        print(f"{DIM}  systemctl --user restart omavoid{RESET}")
+        return 1
 
     if args.action != "capture":
         return 1

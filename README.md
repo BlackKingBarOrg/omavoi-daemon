@@ -113,6 +113,54 @@ each rule changed, per-segment confidences, input level and where the text
 went. "It dropped a word again" becomes "segment 3 came back at avg_logprob
 −1.4".
 
+## The input group
+
+The key is read from evdev, below xkb, so the physical key is the same one
+whatever your layout says. That is also why it needs the `input` group:
+`/dev/input/event*` is `crw-rw---- root input`, and for keyboards group
+membership is the only path — the udev `uaccess` seat ACL applies to
+`ID_INPUT_JOYSTICK` and nothing else here.
+
+```sh
+omavoi hotkey check      # says which of the causes it is, if any
+```
+
+A group is granted **at login**. So after
+
+```sh
+sudo usermod -aG input $USER
+```
+
+the session you are sitting in still does not have it, and neither does
+anything `systemd --user` starts — including the daemon. Logging out and back
+in is the ordinary fix.
+
+If logging out is expensive — long-running services, a session you would
+rather keep — the daemon can be started through `newgrp`, which is setuid
+root and re-reads `/etc/group`, so it acquires the group without a new login
+and without a password (you are already a member on file):
+
+```sh
+d=/run/user/$(id -u)/systemd/user/omavoid.service.d
+mkdir -p "$d"
+cat > "$d/10-input-group.conf" <<'CONF'
+[Service]
+ExecStart=
+ExecStart=/bin/sh -c 'echo "exec omavoi daemon" | newgrp input'
+CONF
+systemctl --user daemon-reload && systemctl --user restart omavoid
+```
+
+`/run` is cleared at boot, so this disappears on its own — by which time the
+login itself has the group and the override would only be noise. It sets the
+daemon's *primary* group to `input`; the only visible effect is the group
+owner on files the daemon writes under `~/.local/state/omavoi`.
+
+Note that your shell still cannot read a device after this, so
+`omavoi hotkey capture` — which reads a keypress in the foreground — will not
+work until you have logged out once. `omavoi hotkey check` says so rather
+than reporting the daemon as broken.
+
 ## Commands
 
 ```
