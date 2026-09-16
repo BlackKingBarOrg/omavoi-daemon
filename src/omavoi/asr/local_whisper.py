@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    # Annotations only, and they are strings here. Importing it for
+    # real cost 25-34 ms to every command that merely reaches this
+    # module: `setup --json` loads it to find the server binary and
+    # `model list --json` loads api_whisper for its PROVIDERS dict.
+    import numpy as np
+
 
 from .. import cudaenv, models
 from .base import NotReady, Segment, Transcript

@@ -11,9 +11,15 @@ import io
 import logging
 import time
 import wave
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    # Annotations only, and they are strings here. Importing it for
+    # real cost 25-34 ms to every command that merely reaches this
+    # module: `setup --json` loads it to find the server binary and
+    # `model list --json` loads api_whisper for its PROVIDERS dict.
+    import numpy as np
+
 
 from .. import secrets
 from .base import NotReady, Segment, Transcript
@@ -53,6 +59,8 @@ PROVIDERS: dict[str, dict[str, str]] = {
 
 def encode_wav(samples: np.ndarray, rate: int) -> bytes:
     """float32 [-1,1] -> 16-bit PCM WAV, in memory."""
+    import numpy as np
+
     clipped = np.clip(samples, -1.0, 1.0)
     pcm = (clipped * 32767.0).astype("<i2")
     buf = io.BytesIO()
