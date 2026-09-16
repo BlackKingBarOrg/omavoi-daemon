@@ -260,6 +260,52 @@ class Daemon:
                         f"{exc}\n\n{_HOTKEY_ROUTE}", urgency="critical")
             self.hotkey = None
 
+    def capture_key(self, timeout: float = 8.0) -> dict[str, Any]:
+        """Read one key press and name it, using the devices already open here.
+
+        The console's "press a key" button used to run `omavoi hotkey capture`
+        as a child of the shell, which opens the devices itself — and so it
+        failed on exactly the machines where it was most needed: a session that
+        joined the `input` group after logging in has no access, while the
+        daemon, started through newgrp or simply started later, does. The
+        process that can read a key should be the one that reads it.
+
+        Two things this deliberately does:
+
+        The listener is paused for the duration. It is watching for the current
+        key on the same devices, so pressing that one while choosing a new one
+        would have started a recording nobody asked for.
+
+        And it blocks this socket while it waits. The server handles one
+        connection at a time, so a status probe in those seconds waits too —
+        acceptable for a deliberate act with the settings page open, and the
+        reason the timeout is capped rather than taken on trust.
+        """
+        from .hotkey import HotkeyUnavailable, capture
+
+        timeout = max(1.0, min(float(timeout), 15.0))
+        paused, listener = False, self.hotkey
+        if listener is not None:
+            listener.stop()
+            paused = True
+        try:
+            name = capture(timeout)
+        except HotkeyUnavailable as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            log.exception("capture failed")
+            return {"ok": False, "error": str(exc)}
+        finally:
+            if paused:
+                try:
+                    listener.start()
+                except HotkeyUnavailable as exc:
+                    log.error("could not resume the hotkey after capture: %s", exc)
+                    self.hotkey = None
+        if not name:
+            return {"ok": False, "error": f"no key pressed within {timeout:.0f}s"}
+        return {"ok": True, "key": name}
+
     def _hotkey_availability(self, ok: bool, detail: str) -> None:
         """Say when the key stops being readable, and when it comes back.
 
@@ -437,6 +483,8 @@ class Daemon:
             return self.end(discard=True)
         if cmd == "toggle":
             return self.toggle()
+        if cmd == "capture":
+            return self.capture_key(float(payload.get("timeout", 8.0)))
         if cmd == "reload":
             return self.reload()
         if cmd == "quit":

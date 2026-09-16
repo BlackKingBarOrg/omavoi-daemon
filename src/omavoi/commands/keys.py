@@ -175,6 +175,38 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
 
     if args.action != "capture":
         return 1
+
+    # The daemon first, because it is the process that can read a key. This
+    # one often cannot: a session that joined the `input` group after logging
+    # in has no device access, and the console's "press a key" button is a
+    # child of that session — so the button failed on exactly the machines
+    # where rebinding was the thing you were trying to do.
+    from .. import daemon as daemon_mod
+
+    # request() raises rather than returning None when there is no socket, and
+    # a capture needs longer than its default read window allows for.
+    reply: dict[str, Any] | None
+    try:
+        reply = daemon_mod.request({"cmd": "capture", "timeout": args.timeout},
+                                   timeout=args.timeout + 10.0)
+    except (ConnectionError, OSError, ValueError):
+        reply = None
+    if reply is not None:
+        if reply.get("ok") and reply.get("key"):
+            if args.json:
+                print(json.dumps({"ok": True, "key": str(reply["key"])}))
+            else:
+                print(str(reply["key"]))
+            return 0
+        # A running daemon that cannot read a key is the answer, not a reason
+        # to try again here with strictly less access.
+        why = str(reply.get("error") or "the daemon could not read a key")
+        if args.json:
+            print(json.dumps({"ok": False, "error": why}))
+        else:
+            print(f"{RED}{why}{RESET}", file=sys.stderr)
+        return 1
+
     try:
         name = capture(timeout=args.timeout)
     except HotkeyUnavailable as exc:
