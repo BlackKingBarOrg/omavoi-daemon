@@ -174,3 +174,55 @@ def test_anthropic_joins_only_the_text_blocks(monkeypatch):
 def test_anthropic_with_no_text_block_is_not_ok(monkeypatch, payload):
     b, _ = _anthropic(monkeypatch, payload)
     assert not b.complete("sys", "hello").ok
+
+
+# -- the agent route's argv exposure ---------------------------------------
+
+
+def test_which_agent_shapes_put_the_transcript_on_a_command_line():
+    """argv is readable from /proc by anything running as this user.
+
+    `omavoi secrets set` reads a key from stdin for exactly that reason, and
+    four of the seven agent shapes have nowhere but argv to take a prompt.
+    Nothing said so anywhere, so `state()` reports it, `omavoi llm list`
+    prints it and the Models card appends it to the route's detail line.
+    """
+    from omavoi.llm.agent_cli import INVOCATIONS, puts_transcript_in_argv
+
+    exposed = {a for a in INVOCATIONS if puts_transcript_in_argv({"agent": a})}
+    assert exposed == {"codex", "grok", "crush", "copilot"}, exposed
+    # And the ones that take stdin are not flagged.
+    assert not puts_transcript_in_argv({"agent": "claude"})
+    assert not puts_transcript_in_argv({"agent": "gemini"})
+    assert not puts_transcript_in_argv({"agent": "pi"})
+
+
+@pytest.mark.parametrize("argv,exposed", [
+    (["--prompt", "{combined}"], True),
+    (["exec", "{text}"], True),
+    (["-p", "--system-prompt", "{system}"], False),
+    (["--print"], False),
+])
+def test_a_user_supplied_argv_is_judged_the_same_way(argv, exposed):
+    """Computed from the template, not from a list of agent names, so a hand
+    written `llm.*.argv` cannot quietly escape the check."""
+    from omavoi.llm.agent_cli import puts_transcript_in_argv
+
+    assert puts_transcript_in_argv({"argv": argv}) is exposed
+
+
+def test_the_backend_and_the_function_cannot_disagree():
+    """Two callers need the answer without a backend in hand, and a second
+    copy of the rule is how the two would come apart."""
+    from omavoi.llm.agent_cli import (
+        INVOCATIONS,
+        AgentCliBackend,
+        puts_transcript_in_argv,
+    )
+
+    for agent in INVOCATIONS:
+        backend = AgentCliBackend("agent", {
+            "backend": "agent-cli", "agent": agent, "model": "", "timeout": 60})
+        assert backend.transcript_in_argv() == puts_transcript_in_argv(
+            {"agent": agent}), agent
+        assert backend.state()["transcript_in_argv"] == backend.transcript_in_argv()

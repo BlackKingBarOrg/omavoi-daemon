@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 from .. import asr, config, ipc, models
+from ..llm.agent_cli import puts_transcript_in_argv as agent_argv_exposed
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 
@@ -212,6 +213,15 @@ def cmd_model(args: argparse.Namespace) -> int:
                     # the console rendered it as "a key is stored".
                     "has_key": bool(key),
                     "ready": bool(key) or not key_env,
+                    # An agent whose non-interactive mode has nowhere but
+                    # argv to take a prompt gets the transcript on a command
+                    # line, which /proc shows to anything running as this
+                    # user. Reported rather than left to be discovered: this
+                    # program reads API keys from stdin for the same reason.
+                    "transcript_in_argv": (
+                        backend == "agent-cli"
+                        and agent_argv_exposed(entry)
+                    ),
                     # Which of the two it came from. The environment wins over
                     # the file, so a stale variable silently beats the key you
                     # just pasted — and "a key is stored" said nothing about
@@ -449,6 +459,12 @@ def cmd_llm(args: argparse.Namespace) -> int:
             by = ", ".join(sorted(used.get(name, []))) or f"{DIM}unused{RESET}"
             print(f"  {name:12s} {entry.get('backend', '?'):14s} "
                   f"{entry.get('model', '')!s:24s} {by}")
+            if (str(entry.get("backend", "")) == "agent-cli"
+                    and agent_argv_exposed(entry)):
+                print(f"    {YELLOW}the transcript goes in this agent's command "
+                      f"line{RESET}{DIM}, which /proc shows to anything running "
+                      f"as you. Its non-interactive mode has nowhere else to "
+                      f"take a prompt.{RESET}")
         return 0
 
     if args.action == "check":

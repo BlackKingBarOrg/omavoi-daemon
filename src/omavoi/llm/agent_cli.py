@@ -16,6 +16,16 @@ how you get a backend that looks supported and returns nothing.
 
 No key is needed either way — the agent is already logged in — at the cost of
 several seconds of process startup per take.
+
+One thing about these shapes is worth saying out loud, because this program
+refuses it elsewhere: an agent whose only non-interactive mode takes the
+prompt as an argument gets the transcript in its argv, and argv is readable
+from /proc by every process running as this user for as long as the command
+lives. `omavoi secrets set` reads a key from stdin for exactly that reason.
+Four of the seven shapes below are argv-only — codex, grok, crush, copilot —
+so `state()` reports it per route and `omavoi llm list` prints it, rather
+than leaving it to be discovered. It is computed from the template, not
+listed, so a user-supplied `argv` is judged the same way.
 """
 
 from __future__ import annotations
@@ -54,6 +64,24 @@ INVOCATIONS: dict[str, dict[str, Any]] = {
 }
 
 _AGENT_FILE = "defaults/agent"
+
+
+def puts_transcript_in_argv(entry: dict[str, Any], agent: str = "") -> bool:
+    """Whether this configuration puts the dictated text on a command line.
+
+    A module-level function because two callers need the answer without a
+    backend in hand — the `[llm]` payload the console reads, and `omavoi llm
+    list` — and a second copy of the rule is how the two would come to
+    disagree.
+
+    Computed from the template rather than listed, so a user-supplied `argv`
+    is judged the same way as the shapes above.
+    """
+    argv = entry.get("argv")
+    if not argv:
+        agent = str(entry.get("agent", "") or agent or configured_agent())
+        argv = (INVOCATIONS.get(agent) or {}).get("argv") or []
+    return any("{text}" in str(a) or "{combined}" in str(a) for a in argv)
 
 
 def configured_agent() -> str:
@@ -95,6 +123,17 @@ class AgentCliBackend:
     def which(self) -> str:
         return self.agent or configured_agent()
 
+    def transcript_in_argv(self) -> bool:
+        """Whether this route puts the dictated text on a command line.
+
+        Readable from /proc by anything running as this user while the
+        command lives. Unavoidable for an agent whose non-interactive mode
+        has nowhere else to take a prompt; worth knowing before dictating
+        something into it either way.
+        """
+        return puts_transcript_in_argv(
+            {"argv": self.argv_template, "agent": self.which()}, self.which())
+
     def why_not(self) -> str:
         agent = self.which()
         if not agent:
@@ -122,6 +161,7 @@ class AgentCliBackend:
             "url": shutil.which(agent) or "" if agent else "",
             "pid": 0,
             "problem": problem,
+            "transcript_in_argv": self.transcript_in_argv(),
         }
 
     def describe(self) -> str:
