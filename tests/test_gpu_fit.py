@@ -15,7 +15,6 @@ import pytest
 
 from omavoi import gpu
 
-
 # -- needed_mb --------------------------------------------------------------
 
 
