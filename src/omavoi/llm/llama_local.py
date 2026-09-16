@@ -235,7 +235,14 @@ class LlamaLocalBackend:
                                  time.monotonic() - started,
                                  error=f"HTTP {response.status_code}: {response.text[:160]}")
             payload = response.json()
-            content = str(payload["choices"][0]["message"]["content"]).strip()
+            # `content` is null on more endpoints than it looks: a reasoning
+            # model that puts its answer in reasoning_content, a response cut
+            # off by max_tokens, a refusal, a tool call. `str(None)` is the
+            # four-character string "None", which is non-empty, so LlmResult
+            # called it ok and the pipeline typed the word None into whatever
+            # window was in front. A non-string content is no content.
+            raw = (payload.get("choices") or [{}])[0].get("message", {}).get("content")
+            content = raw.strip() if isinstance(raw, str) else ""
             if not content:
                 finish = (payload.get("choices") or [{}])[0].get("finish_reason", "")
                 why = ("the model used its whole token budget without answering"

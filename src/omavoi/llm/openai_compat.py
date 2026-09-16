@@ -83,8 +83,24 @@ class OpenAiCompatBackend:
                 return LlmResult("", self.model, self.backend, time.monotonic() - started,
                                  error=f"HTTP {response.status_code}: {response.text[:160]}")
             payload = response.json()
-            content = payload["choices"][0]["message"]["content"]
-            return LlmResult(str(content).strip(), self.model, self.backend,
+            # `content` is null on more endpoints than it looks: a reasoning
+            # model that puts its answer in reasoning_content, a response cut
+            # off by max_tokens, a refusal, a tool call. `str(None)` is the
+            # four-character string "None", which is non-empty, so LlmResult
+            # called it ok and the pipeline typed the word None into whatever
+            # window was in front. A non-string content is no content.
+            raw = (payload.get("choices") or [{}])[0].get("message", {}).get("content")
+            content = raw.strip() if isinstance(raw, str) else ""
+            if not content:
+                # Said, not swallowed: the caller keeps the text it had, and
+                # without this the take looks like the step simply chose to
+                # change nothing.
+                finish = (payload.get("choices") or [{}])[0].get("finish_reason", "")
+                return LlmResult("", self.model, self.backend,
+                                 time.monotonic() - started,
+                                 error="the endpoint returned no text"
+                                       + (f" (finish_reason={finish})" if finish else ""))
+            return LlmResult(content, self.model, self.backend,
                              time.monotonic() - started)
         except Exception as exc:
             return LlmResult("", self.model, self.backend, time.monotonic() - started,
