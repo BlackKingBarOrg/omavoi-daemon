@@ -208,8 +208,16 @@ def _nvidia_vram() -> dict[str, Any]:
         )
         if out.returncode != 0:
             return {}
+        # The first GPU, which is the one both engines will use: neither
+        # llama.cpp nor whisper.cpp is told a device here, so both take
+        # index 0. Reading GPU 0 is therefore reporting the pool the models
+        # actually allocate from, not a simplification of several.
         line = out.stdout.decode().strip().splitlines()[0]
-        name, used, total = (p.strip() for p in line.split(","))
+        # rsplit, because the two numbers are at the end and the name is not
+        # guaranteed to be comma-free. A name with a comma in it made this
+        # unpack raise, which the handler below turns into "no NVIDIA GPU" —
+        # the same shape as evdev reporting "no keyboard" for "no permission".
+        name, used, total = (p.strip() for p in line.rsplit(",", 2))
         used_mb, total_mb = int(used), int(total)
         return {"name": name, "used_mb": used_mb, "total_mb": total_mb,
                 "free_mb": max(0, total_mb - used_mb)}
