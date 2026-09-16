@@ -329,7 +329,13 @@ DEFAULTS: dict[str, Any] = {
         # zh, ja, th — the console's dropdown writes this.
         "language": "",
         "hud": True,
-        "hud_position": "bottom",     # bottom | cursor | window
+        # bottom is the only one implemented. "cursor" and "window" were
+        # written here and never built: they need the pointer position or the
+        # focused window's geometry at the moment the key goes down, which is
+        # a hyprctl call per take and a multi-monitor question, and a config
+        # key that names a behaviour nothing implements is worse than no key.
+        # config set rejects the other two rather than accepting them quietly.
+        "hud_position": "bottom",     # bottom
         "hud_size": "s",              # xs | s | m
         # always | changed | never — "changed" dwells only when the text was
         # altered or flagged, which is the only version that stays useful

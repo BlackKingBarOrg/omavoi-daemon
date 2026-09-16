@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -60,6 +61,26 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
         return ("auto", "cpu", "cuda"), "a device"
     if key == "switching.mode":
         return tuple(sorted(cfg.get("modes", {}))), "a mode that exists"
+    if key == "ui.hud_size":
+        return ("xs", "s", "m"), "an overlay size"
+    if key == "ui.hud_position":
+        # One value, because one is implemented. "cursor" and "window" were in
+        # the defaults comment and nothing built them, so they were accepted
+        # and ignored.
+        return ("bottom",), "an overlay position"
+    if key == "inject.paste_method" or at("modes", "*", "paste_method"):
+        # What _send_paste dispatches on. Anything else fell through to the
+        # compositor shortcut silently, so a typo looked like it worked.
+        return ("", "shortcut", "wtype", "xdotool"), "a paste route"
+    if key == "speech.api.response_format":
+        # ApiWhisperBackend calls response.json() unconditionally, so a format
+        # that is not JSON is not a preference, it is a crash on the next take.
+        return ("json", "verbose_json"), "a response format the reader parses"
+    if key == "audio.rate":
+        # config.check already says "whisper needs 16000 Hz" on every load. It
+        # said it as a warning and left the value in place, so the daemon went
+        # on feeding whisper audio at the wrong rate.
+        return ("16000",), "a rate whisper can use"
     return (), ""
 
 
@@ -93,6 +114,52 @@ def _why_not_that_number(key: str, value: str) -> str:
     if n < low or n > high:
         return (f"{value} is outside {low:g}–{high:g} — {key} is {what}")
     return ""
+
+
+def _why_not_that_level(key: str, value: str) -> str:
+    """Why this is not a logging level.
+
+    `ui.log_level = SHOUT` was accepted and then silently became INFO, because
+    setup_logging reads it with `getattr(logging, level.upper(), logging.INFO)`.
+    Nothing was broken by it and nothing was true either: the config said one
+    thing and the logger did another.
+
+    Not in _legal_values because the reader uppercases, so both cases are
+    genuinely legal and a list of ten values in two spellings is noise. The
+    names come from logging itself, so this cannot drift.
+    """
+    if key != "ui.log_level":
+        return ""
+    names = {n for n in logging.getLevelNamesMapping() if n != "NOTSET"}
+    if value.upper() in names:
+        return ""
+    shown = ", ".join(sorted(names, key=lambda n: logging.getLevelNamesMapping()[n]))
+    return f"{value!r} is not a logging level. One of: {shown}"
+
+
+def _why_not_that_language(key: str, value: str) -> str:
+    """Why this is not shaped like a speech language.
+
+    Whisper takes an ISO-639 code, and `speech.language = chinese` or `zh-CN`
+    was written happily — then the endpoint either 400s or quietly ignores it,
+    on a take, minutes later, with nothing pointing back here.
+
+    A shape check and not a list: the 99 codes whisper knows are whisper's,
+    not ours, and hardcoding them here would be a copy that goes stale. The
+    shape catches every realistic mistake — a language name, a locale, a
+    region suffix — and lets through only invented two-letter codes, which the
+    engine itself will then name.
+    """
+    if key != "speech.language" and not (
+        key.startswith("modes.") and key.endswith(".language")
+    ):
+        return ""
+    if value in ("", "auto") or (2 <= len(value) <= 3 and value.isalpha() and value.islower()):
+        return ""
+    return (
+        f"{value!r} is not a language code. Use a 2- or 3-letter ISO-639 code "
+        f"(en, zh, ja, yue), 'auto' to detect it, or '' to follow the mode"
+    )
 
 
 def _why_not_that_choice(key: str, value: str) -> str:
@@ -137,6 +204,8 @@ def cmd_config(args: argparse.Namespace) -> int:
         why = _why_not_that_hotkey(args.key, args.value) \
             or _why_not_that_llm_model(args.key, args.value) \
             or _why_not_that_provider(args.key, args.value) \
+            or _why_not_that_level(args.key, args.value) \
+            or _why_not_that_language(args.key, args.value) \
             or _why_not_that_choice(args.key, args.value) \
             or _why_not_that_number(args.key, args.value)
         if why and not getattr(args, "force", False):

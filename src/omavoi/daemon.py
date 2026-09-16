@@ -327,6 +327,16 @@ class Daemon:
             # second after an edit — this is the answer that types.
             "mode": modes.resolve(self.cfg, None, self.forced_mode).name,
             "switching": dict(self.cfg.get("switching", {})),
+            # The overlay's own settings. It had none: Hud.qml hardcoded the
+            # "changed" dwell policy and the settings page offered a control
+            # for it that wrote a key nothing read. Sent from the daemon's
+            # copy for the same reason `switching` is — the console can read
+            # the file, but the HUD is told what is actually in effect.
+            "ui": {
+                "hud": bool(self.cfg["ui"].get("hud", True)),
+                "hud_dwell": str(self.cfg["ui"].get("hud_dwell", "changed")),
+                "hud_size": str(self.cfg["ui"].get("hud_size", "s")),
+            },
             "hotkey": {
                 "enabled": bool(self.hotkey),
                 # What the listener is bound to, not what the file says. These
@@ -484,6 +494,11 @@ class Daemon:
         self._release_idle_llms()
         self._apply_mode_speech_model()
         self._rebind_hotkey()
+        # Subscribers were told the ui settings once, in the snapshot they got
+        # when they connected. Without this a dwell change reaches the overlay
+        # only after a shell restart, which looks exactly like the control not
+        # working — which is what it did before it was wired up at all.
+        self._broadcast({"event": "ui", "ui": self.status()["ui"]})
         log.info("config reloaded%s", "; speech settings changed, restart the daemon" if model_changed else "")
         return {"ok": True, "reloaded": True, "model_restart_required": model_changed}
 

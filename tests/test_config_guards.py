@@ -20,7 +20,10 @@ def test_every_legal_value_is_accepted(home):
     for key in ("speech.backend", "llm.api.backend", "hotkey.mode",
                 "inject.method", "modes.default.inject",
                 "modes.default.rules.punctuation", "ui.hud_dwell",
-                "ui.language", "speech.local_whisper.device", "switching.mode"):
+                "ui.language", "speech.local_whisper.device", "switching.mode",
+                "ui.hud_size", "ui.hud_position", "inject.paste_method",
+                "modes.default.paste_method", "speech.api.response_format",
+                "audio.rate"):
         legal, what = settings._legal_values(key, cfg)
         assert legal, f"{key} has no table any more"
         assert what
@@ -35,7 +38,8 @@ def test_every_legal_value_is_accepted(home):
     "speech.backend", "llm.api.backend", "hotkey.mode", "inject.method",
     "modes.default.inject", "modes.default.rules.punctuation",
     "ui.hud_dwell", "ui.language", "speech.local_whisper.device",
-    "switching.mode",
+    "switching.mode", "ui.hud_size", "ui.hud_position", "inject.paste_method",
+    "modes.default.paste_method", "speech.api.response_format", "audio.rate",
 ])
 def test_a_value_outside_the_set_is_refused(home, key):
     why = settings._why_not_that_choice(key, "definitely-not-a-real-value")
@@ -92,3 +96,57 @@ def test_the_shipped_defaults_are_all_inside_their_own_ranges(home):
         assert value is not None, f"{key} is not in the shipped config"
         why = settings._why_not_that_number(key, str(value))
         assert why == "", f"the default {value} for {key} is refused: {why}"
+
+
+# -- the two that cannot use the tuple table -------------------------------
+
+
+@pytest.mark.parametrize("value", ["DEBUG", "debug", "Info", "WARNING", "warn",
+                                   "error", "CRITICAL", "fatal"])
+def test_every_spelling_of_a_real_level_is_accepted(home, value):
+    """setup_logging uppercases, so both cases genuinely work.
+
+    Listing them in _legal_values would mean twenty entries in an error
+    message; the check reads logging's own mapping instead.
+    """
+    assert settings._why_not_that_level("ui.log_level", value) == ""
+
+
+@pytest.mark.parametrize("value", ["SHOUT", "verbose", "loud", "9", "",
+                                   "NOTSET"])
+def test_a_level_the_logger_would_ignore_is_refused(home, value):
+    """`ui.log_level = SHOUT` was written, then silently became INFO.
+
+    `getattr(logging, "SHOUT", logging.INFO)` is the fallback that made it
+    quiet. NOTSET is refused too: it is a real attribute and it means "ask
+    the parent", which is not a level anyone means to choose here.
+    """
+    why = settings._why_not_that_level("ui.log_level", value)
+    assert why, f"{value!r} was accepted as a logging level"
+    assert "logging level" in why
+
+
+@pytest.mark.parametrize("value", ["", "auto", "en", "zh", "ja", "yue", "de"])
+def test_a_language_code_is_accepted(home, value):
+    assert settings._why_not_that_language("speech.language", value) == ""
+    assert settings._why_not_that_language("modes.default.language", value) == ""
+
+
+@pytest.mark.parametrize("value", ["chinese", "klingon", "zh-CN", "en_US",
+                                   "ZH", "z", "中文"])
+def test_a_language_name_or_locale_is_refused(home, value):
+    """The realistic mistakes, which whisper answers with a 400 minutes later.
+
+    A shape check and not a list of whisper's 99 codes: those are whisper's
+    and a copy here would go stale. It lets through invented two-letter codes,
+    which the engine itself then names — and catches every one of these.
+    """
+    why = settings._why_not_that_language("speech.language", value)
+    assert why, f"{value!r} was accepted as a language"
+    assert "ISO-639" in why
+
+
+def test_the_language_check_ignores_keys_that_are_not_languages(home):
+    """It matches `modes.*.language` by suffix, so it must not catch more."""
+    for key in ("ui.language", "speech.backend", "modes.default.inject"):
+        assert settings._why_not_that_language(key, "chinese") == "", key

@@ -119,3 +119,34 @@ def test_llm_entries_say_where_their_key_lives_too(home):
     for entry in payload(home)["llm"]:
         assert "key_name" in entry, f"{entry['name']} does not say"
         assert entry["key_name"], f"{entry['name']} has an empty key name"
+
+
+def test_the_status_snapshot_carries_the_overlays_settings():
+    """The HUD had no way to learn them, so it hardcoded one of them.
+
+    Hud.qml read none of ui.hud, ui.hud_dwell or ui.hud_size. The dwell
+    policy was written into _dwellFor() as the "changed" behaviour, and the
+    settings page offered always/changed/never — three buttons, one of which
+    did what it said. The overlay learns them from the status snapshot now,
+    which is also why reload rebroadcasts it: a subscriber is told once, at
+    connect, and without the rebroadcast a change landed only on the next
+    shell restart.
+
+    Checked against the source because building a Daemon opens the mic and
+    loads a model, and this is a question about the payload's shape.
+    """
+    import inspect
+
+    from omavoi.daemon import Daemon
+
+    src = inspect.getsource(Daemon.status)
+    for key in ('"hud"', '"hud_dwell"', '"hud_size"'):
+        assert key in src, f"status() no longer sends {key}"
+
+    # reload must push it, or the setting takes effect at the next restart.
+    reload_src = inspect.getsource(Daemon.reload)
+    assert '"event": "ui"' in reload_src, "reload no longer rebroadcasts ui"
+    assert 'self.status()["ui"]' in reload_src, (
+        "reload builds its own ui block; it must reuse status() so the two "
+        "cannot drift"
+    )
