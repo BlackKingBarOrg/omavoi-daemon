@@ -77,7 +77,6 @@ class Injector:
         self.restore_after = float(inject.get("restore_clipboard_after", 1.5))
         self.wtype_delay_ms = int(inject.get("wtype_delay_ms", 0))
         self.default_paste_key: str = inject.get("paste_key", "CTRL+V")
-        self.avoid_wtype_on_xwayland = bool(inject.get("avoid_wtype_on_xwayland", True))
         self.paste_method: str = inject.get("paste_method", "") or ""
         self.xdotool_delay_ms = int(inject.get("xdotool_delay_ms", 12))
         self.paste_settle_ms = int(inject.get("paste_settle_ms", 60))

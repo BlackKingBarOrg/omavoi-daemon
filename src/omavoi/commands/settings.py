@@ -61,6 +61,12 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
         return ("auto", "cpu", "cuda"), "a device"
     if key == "switching.mode":
         return tuple(sorted(cfg.get("modes", {}))), "a mode that exists"
+    if key == "hotkey.force_mode":
+        # "" resolves from the window as usual. config.validate has always
+        # reported a bad value here, once per load, as a warning — while
+        # `config set` accepted it, so the file kept the wrong name and the
+        # warning was the only sign.
+        return ("", *sorted(cfg.get("modes", {}))), "a mode that exists"
     if key == "ui.hud_size":
         return ("xs", "s", "m"), "an overlay size"
     if key == "ui.hud_position":

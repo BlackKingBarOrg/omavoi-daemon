@@ -45,7 +45,14 @@ class Daemon:
         self.audio = RingCapture(cfg)
         self.backend = asr.build(cfg)
         self.pipeline = Pipeline(cfg, self.backend, Injector(cfg), History(cfg))
-        self.forced_mode = ""
+        # hotkey.force_mode: always this mode, whatever window is in front.
+        # config.validate has been checking it is a real mode since it was
+        # added, and nothing ever read it — so the key was documented,
+        # validated, settable, and inert. `omavoi mode <name>` writes the
+        # same field at runtime, and a reload deliberately does not put this
+        # back: a mode chosen by hand should not be undone by an unrelated
+        # settings change.
+        self.forced_mode = str(cfg["hotkey"].get("force_mode", "") or "")
         self._mode_hint = "default"
         self.hotkey: HotkeyListener | None = None
 

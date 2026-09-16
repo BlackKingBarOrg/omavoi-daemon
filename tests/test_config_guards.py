@@ -23,7 +23,7 @@ def test_every_legal_value_is_accepted(home):
                 "ui.language", "speech.local_whisper.device", "switching.mode",
                 "ui.hud_size", "ui.hud_position", "inject.paste_method",
                 "modes.default.paste_method", "speech.api.response_format",
-                "audio.rate"):
+                "audio.rate", "hotkey.force_mode"):
         legal, what = settings._legal_values(key, cfg)
         assert legal, f"{key} has no table any more"
         assert what
@@ -40,6 +40,7 @@ def test_every_legal_value_is_accepted(home):
     "ui.hud_dwell", "ui.language", "speech.local_whisper.device",
     "switching.mode", "ui.hud_size", "ui.hud_position", "inject.paste_method",
     "modes.default.paste_method", "speech.api.response_format", "audio.rate",
+    "hotkey.force_mode",
 ])
 def test_a_value_outside_the_set_is_refused(home, key):
     why = settings._why_not_that_choice(key, "definitely-not-a-real-value")

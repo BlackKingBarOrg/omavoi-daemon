@@ -70,8 +70,11 @@ DEFAULTS: dict[str, Any] = {
         "mode": "push_to_talk",   # push_to_talk | toggle
         "devices": [],
         "rescan_seconds": 5.0,
-        # Hold this as well to force one mode regardless of the window.
-        "force_modifier": "",
+        # Always this mode, whatever window is in front. Empty means resolve
+        # it from the window as usual. `force_modifier` was here too — hold a
+        # modifier to force a mode for one take — and it needs the listener to
+        # track a second key's state across the whole take. Nothing read it,
+        # so it is gone rather than sitting in the file looking available.
         "force_mode": "",
     },
     "speech": {
@@ -288,12 +291,19 @@ DEFAULTS: dict[str, Any] = {
         # virtual keyboard, so they decode its keycodes against the system
         # layout and a sentence arrives as "1234567890-=". Detecting the
         # client beats listing them: it covers every X11 app at once.
-        "avoid_wtype_on_xwayland": True,
         # XTEST is the only route into an X11 client that depends on neither
         # wtype's keymap nor the compositor's clipboard bridge. Where that
         # bridge is broken — and it is, on some setups — pasting silently
         # produces nothing at all.
-        "xdotool_for_xwayland": True,
+        #
+        # `xdotool_for_xwayland` and `avoid_wtype_on_xwayland` used to be here
+        # as switches for that, both defaulting on and neither read: the first
+        # by nothing at all, the second by an attribute assigned in Injector
+        # and never consulted. Turning either off selects a route these very
+        # comments say cannot arrive — wtype's keymap is what X11 clients
+        # cannot read, and the clipboard bridge does not carry the selection —
+        # so they were switches for producing silence. The xdotool-absent case
+        # is still handled, by asking shutil.which.
         "xdotool_delay_ms": 12,
         "clipboard_classes": [
             "code", "cursor", "electron", "slack", "discord", "obsidian",
