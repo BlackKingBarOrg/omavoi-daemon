@@ -206,6 +206,11 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "key_name": str(entry.get("key_name", "") or name),
                     "key": secrets.redact(key) if key_env else "",
                     "has_key": bool(key) or not key_env,
+                    # Which of the two it came from. The environment wins over
+                    # the file, so a stale variable silently beats the key you
+                    # just pasted — and "a key is stored" said nothing about
+                    # which one was in use.
+                    "key_source": secrets.source_of(key_env, str(entry.get("key_name", "") or name)),
                     "used_by": sorted(used_by.get(name, [])),
                     **_llm_live(engines, name),
                 })
@@ -235,6 +240,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                 "key_env": s_key_env,
                 "key": secrets.redact(s_key) if s_key_env else "",
                 "has_key": bool(s_key) or not s_key_env,
+                "key_source": secrets.source_of(s_key_env, s_key_name),
                 # Shown greyed as the value that applies when the field is
                 # left empty, so a preset is visible rather than magic.
                 "default_base_url": str(preset.get("base_url", "")),
