@@ -163,25 +163,44 @@ class NameIndex:
 
     # -- seeding -----------------------------------------------------------
 
-    def seed_text(self) -> str:
-        """Names to hand the decoder, most-used first, inside the budget.
+    def seed_split(self) -> tuple[list[str], list[str]]:
+        """The names that fit the budget, and the ones that did not.
+
+        Split out from seed_text because the second half of it had nowhere to
+        go: the loop broke at the budget and the names past it were dropped
+        with nothing said anywhere. Someone who adds thirty names sees thirty
+        in `names list` and hands the decoder however many happened to fit.
 
         Budgeted in characters rather than real tokens: whisper's prompt cap
         is 224 tokens, and a CJK name costs roughly one token per character,
         so characters are the conservative estimate.
         """
         if not self.seed_enabled:
-            return ""
+            return [], [e.name for e in self.entries if e.seed]
         wanted = [e for e in self.entries if e.seed]
         wanted.sort(key=lambda e: (-e.hits, e.name))
         picked: list[str] = []
+        dropped: list[str] = []
         used = 0
         for entry in wanted:
             cost = len(entry.name) + 2
+            # Not `break`: a long name early on should not hide every short
+            # one behind it, and the list is in most-used-first order, so
+            # carrying on spends the rest of the budget where it is worth most.
             if used + cost > self.budget:
-                break
+                dropped.append(entry.name)
+                continue
             picked.append(entry.name)
             used += cost
+        return picked, dropped
+
+    def seed_chars(self) -> int:
+        """What the seeded names cost against the budget."""
+        picked, _ = self.seed_split()
+        return sum(len(n) + 2 for n in picked)
+
+    def seed_text(self) -> str:
+        picked, _ = self.seed_split()
         return ", ".join(picked)
 
     # -- matching ----------------------------------------------------------

@@ -66,8 +66,16 @@ def cmd_names(args: argparse.Namespace) -> int:
                 key = (names_mod.pinyin_key(e.name) if e.resolved_match() == "pinyin"
                        else names_mod.phonetic_key(e.name))
                 rows.append(e.as_dict() | {"key": key})
+            seeded, dropped = index.seed_split()
             print(json.dumps({"names": rows, "seed": index.seed_text(),
-                              "budget": index.budget}, ensure_ascii=False, indent=2))
+                              "budget": index.budget,
+                              # What actually reaches the decoder, and what
+                              # did not fit. The console had a `budget`
+                              # property and no way to learn either.
+                              "seed_chars": index.seed_chars(),
+                              "seeded": seeded,
+                              "dropped": dropped},
+                             ensure_ascii=False, indent=2))
             return 0
         if not index.entries:
             print(f"{DIM}no names yet — omavoi names add <name> [...]{RESET}")
@@ -77,7 +85,19 @@ def cmd_names(args: argparse.Namespace) -> int:
             key = (names_mod.pinyin_key(e.name) if e.resolved_match() == "pinyin"
                    else names_mod.phonetic_key(e.name))
             print(f"  {e.name:<18}{key:<22}{e.resolved_match():<10}{state:<20}{DIM}{e.group}{RESET}")
-        print(f"\n{DIM}{len(index.entries)} names · decoder prompt: {index.seed_text()[:60] or '(none)'}{RESET}")
+        seeded, dropped = index.seed_split()
+        print(f"\n{DIM}{len(index.entries)} names · decoder prompt: "
+              f"{index.seed_text()[:60] or '(none)'}{RESET}")
+        if dropped:
+            # The loop used to break at the budget and say nothing, so these
+            # names were listed above as seeded and never handed to anything.
+            print(f"{YELLOW}{len(dropped)} did not fit the "
+                  f"{index.budget}-character seed budget{RESET}: "
+                  f"{', '.join(dropped[:6])}"
+                  + (" …" if len(dropped) > 6 else ""))
+            print(f"{DIM}  they still match if enabled; only the decoder hint "
+                  f"is capped. Raise it with `omavoi config set "
+                  f"dictionary.names_settings.seed_budget_tokens <n>`{RESET}")
         return 0
 
     if args.action == "add":

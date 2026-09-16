@@ -81,3 +81,66 @@ def test_a_missing_file_is_not_ffmpegs_fault(home, tmp_path):
     with pytest.raises(SystemExit) as exc:
         load_wav(tmp_path)
     assert "is a directory" in str(exc.value)
+
+
+# -- the seed budget -------------------------------------------------------
+
+
+def test_names_past_the_seed_budget_are_reported(home, capsys):
+    """seed_text broke at the budget and said nothing about the rest.
+
+    The names are listed on the Dictionary page and by `names list` as
+    seeded; the ones past 224 characters were handed to nothing. A user who
+    adds forty names gets whatever fits and no sign that the other twelve
+    are inert.
+    """
+    from omavoi import names
+
+    cfg = config.load()
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": f"Name{i:02d}", "seed": True, "enabled": False, "group": ""}
+        for i in range(40)
+    ]
+    index = names.NameIndex(cfg)
+    seeded, dropped = index.seed_split()
+
+    assert seeded and dropped, "40 short names should overrun a 224-char budget"
+    assert len(seeded) + len(dropped) == 40, "every name must be in one list"
+    assert index.seed_chars() <= index.budget, "the seeded names must fit"
+    assert set(seeded).isdisjoint(dropped)
+    assert index.seed_text() == ", ".join(seeded)
+
+
+def test_the_budget_is_spent_not_abandoned_at_the_first_overrun(home):
+    """It was `break`, so one long name hid every short one behind it.
+
+    Ordered most-used first, a 210-character name with 50 hits stopped the
+    loop, and a three-letter name with 10 hits was dropped for no reason
+    other than its position.
+    """
+    from omavoi import names
+
+    cfg = config.load()
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": "A" * 210, "seed": True, "enabled": False, "group": "", "hits": 99},
+        {"name": "B" * 210, "seed": True, "enabled": False, "group": "", "hits": 50},
+        {"name": "Kim", "seed": True, "enabled": False, "group": "", "hits": 10},
+    ]
+    seeded, dropped = names.NameIndex(cfg).seed_split()
+    assert "Kim" in seeded, "a short name after a long one still fits the budget"
+    assert dropped == ["B" * 210]
+
+
+def test_names_list_says_what_did_not_fit(home, capsys):
+    cfg = config.load()
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": f"Name{i:02d}", "seed": True, "enabled": False, "group": ""}
+        for i in range(40)
+    ]
+    config.write(cfg)
+    capsys.readouterr()
+
+    assert _run("list", []) == 0
+    out = capsys.readouterr().out
+    assert "did not fit" in out, "the cap must be mentioned"
+    assert "seed_budget_tokens" in out, "and how to raise it"
