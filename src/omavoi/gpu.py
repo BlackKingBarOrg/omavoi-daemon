@@ -12,6 +12,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -216,8 +217,22 @@ def _nvidia_vram() -> dict[str, Any]:
         return {}
 
 
-def vram() -> dict[str, Any]:
+# Half a second, which is long enough to collapse the nineteen calls one
+# `model list` makes into one, and short enough that the fit gate before a
+# mode switch still reads a current figure. Measured: nvidia-smi costs 16 ms,
+# so `model list --json` was spending 393 ms of its 518 asking the same
+# question nineteen times.
+_VRAM_TTL = 0.5
+_vram_cache: tuple[float, dict[str, Any]] | None = None
+
+
+def vram(*, fresh: bool = False) -> dict[str, Any]:
     """Used and total memory the GPU draws on, or {} when there is nothing to say.
+
+    Cached for half a second. Pass fresh=True where a stale reading would be
+    wrong rather than merely old — nothing does today, and the parameter is
+    here so that a caller which needs it does not have to discover the cache
+    by being surprised by it.
 
     Two shapes come back, and callers have to tell them apart. A discrete
     NVIDIA card owns a pool and nvidia-smi reports it. An integrated GPU owns
@@ -226,16 +241,24 @@ def vram() -> dict[str, Any]:
     there is MemTotal, and the payload carries `unified` to say so rather than
     letting a caller print it as if a card had that much to itself.
     """
+    global _vram_cache
+    now = time.monotonic()
+    if not fresh and _vram_cache is not None and now - _vram_cache[0] < _VRAM_TTL:
+        return _vram_cache[1]
+
     info = _nvidia_vram()
     if info:
+        _vram_cache = (now, info)
         return info
     card = _integrated()
     if not card:
+        _vram_cache = (now, {})
         return {}
     total_mb, used_mb = _meminfo_mb()
     if not total_mb:
+        _vram_cache = (now, {})
         return {}
-    return {
+    out = {
         "name": card.get("name") or "integrated GPU",
         "driver": card.get("driver", ""),
         "unified": True,
@@ -243,10 +266,30 @@ def vram() -> dict[str, Any]:
         "total_mb": total_mb,
         "free_mb": max(0, total_mb - used_mb),
     }
+    _vram_cache = (now, out)
+    return out
 
+
+_apps_cache: tuple[float, list[Any]] | None = None
 
 def compute_apps() -> list[Holder]:
-    """Every process nvidia-smi reports holding VRAM, biggest first."""
+    """Every process nvidia-smi reports holding VRAM, biggest first.
+
+    Cached on the same half-second as vram(), and for the same reason: one
+    `model list` asked nvidia-smi eight times for this — once per model that
+    would not fit, to name what is holding the memory — at 18 ms each.
+    """
+    global _apps_cache
+    now = time.monotonic()
+    if _apps_cache is not None and now - _apps_cache[0] < _VRAM_TTL:
+        return _apps_cache[1]
+    found = _compute_apps_now()
+    _apps_cache = (now, found)
+    return found
+
+
+def _compute_apps_now() -> list[Holder]:
+    """The query itself, uncached, so the four exits above stay as written."""
     if shutil.which("nvidia-smi") is None:
         return []
     try:

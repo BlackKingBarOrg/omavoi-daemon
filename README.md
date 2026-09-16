@@ -180,6 +180,14 @@ omavoi dict add|rm|list       heard -> meant
 omavoi names add|rm|dryrun|enable
 omavoi config get|set|edit|show
 omavoi transcribe FILE [--mode M]
+
+omavoi hotkey check           why the key is not working, if it is not
+omavoi hotkey capture         name the key you press (asks the daemon to read it)
+omavoi llm list|check         the three LLM configurations, and whether one answers
+omavoi speech show|check      the remote speech endpoint, and whether it answers
+omavoi secrets set NAME       a key, read from stdin — never from argv
+omavoi inject TEXT            type into the focused window, to test the route
+omavoi reload                 make the daemon re-read the config
 ```
 
 ## Engines
