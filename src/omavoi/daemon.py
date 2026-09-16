@@ -548,6 +548,13 @@ class Daemon:
                 log.error("hotkey unavailable: %s", exc)
                 notify.send("Omavoi: hotkey unavailable",
                             f"{exc}\n\n{_HOTKEY_ROUTE}", urgency="critical")
+                # The rebind path has always done this and the start path
+                # never did, so a listener that failed to open a single device
+                # stayed assigned — and status() then reported enabled:true
+                # with an empty device list. `omavoi hotkey check` read that
+                # and said "the daemon is listening on it:" over a dead key,
+                # which is the one thing that command exists not to do.
+                self.hotkey = None
 
         self._watcher = threading.Thread(target=self._watch_config,
                                          name="omavoi-config", daemon=True)

@@ -82,12 +82,19 @@ def _hotkey_report() -> dict[str, Any]:
     else:
         hk = info.get("hotkey") or {}
         out["daemon"] = "running"
-        out["bound"] = str(hk.get("key", ""))
+        # Live only when there is a listener: status() falls back to the
+        # configured key for display, and reading that as a binding is how
+        # a dead hotkey looked bound.
+        out["bound"] = str(hk.get("key", "")) if hk.get("enabled") else ""
         out["bound_devices"] = hk.get("devices") or []
-        out["listener"] = bool(hk.get("enabled"))
+        # A listener with no devices is not listening. `enabled` only says an
+        # object exists, and for one startup it said so about a listener that
+        # had opened nothing at all.
+        out["listener"] = bool(hk.get("enabled")) and bool(out["bound_devices"])
         # The one that hid a bug for a whole session: the file said one thing
         # and the listener was on another.
-        out["matches"] = str(hk.get("key", "")) == want
+        out["matches"] = (bool(hk.get("enabled"))
+                          and str(hk.get("key", "")) == want)
     return out
 
 
@@ -115,24 +122,38 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             return 1
         line(True, f"{r['configured']} is a real evdev key (code {r['code']})")
 
-        if r.get("group_listed") and not r.get("group_held"):
-            line(False, "you are in the `input` group but this shell predates it "
-                        "— log out and back in")
-        elif not r.get("group_listed"):
-            line(False, "you are not in the `input` group")
+        # The group and the devices are one question, not two: with no group
+        # nothing opens, so printing both made the same sentence appear twice
+        # and put a "restart the daemon" underneath it that could not have
+        # helped. The reason the key cannot be read is said once, and the
+        # daemon is not consulted at all — every answer it could give is a
+        # consequence of this one.
+        if not r.get("group_listed"):
+            line(False, "you are not in the `input` group, so not one keyboard "
+                        "can be opened")
             print(f"{DIM}  sudo usermod -aG input $USER   then log out and back in{RESET}")
-        else:
-            line(True, "in the `input` group")
+            return 1
+        if not r.get("group_held"):
+            line(False, "you are in the `input` group, but this login started "
+                        "before that — nothing in this session can read a key")
+            print(f"{DIM}  log out and back in. Nothing else will do it: a group is "
+                  f"granted at login, and restarting the daemon keeps the same "
+                  f"session.{RESET}")
+            return 1
+        line(True, "in the `input` group, and this session holds it")
 
         dp = r.get("devices_problem") or ""
         line(not dp, dp or f"a device can emit {r['configured']}")
+        if dp:
+            print(f"{DIM}  omavoi hotkey capture   — press a key that exists here{RESET}")
+            return 1
 
         if r.get("daemon") != "running":
             line(False, "the daemon is not running")
             print(f"{DIM}  systemctl --user start omavoid{RESET}")
             return 1
         if not r.get("listener"):
-            line(False, "the daemon is running but has no key listener")
+            line(False, "the daemon is running and reading no device")
             print(f"{DIM}  systemctl --user restart omavoid{RESET}")
             return 1
         if not r.get("matches"):
@@ -142,7 +163,7 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             return 1
         line(True, "the daemon is listening on it: "
                    + ", ".join(r.get("bound_devices") or []))
-        return 0 if not dp else 1
+        return 0
 
     if args.action != "capture":
         return 1

@@ -48,12 +48,19 @@ def explain_missing(code: int, name: str, explicit: list[str] | None = None) -> 
     group membership on a machine whose user is in the group is worse than no
     notification at all.
     """
+    import glob
     import grp
     import os
 
-    from evdev import InputDevice, ecodes, list_devices
+    from evdev import InputDevice, ecodes
 
-    paths = explicit if explicit is not None else list_devices()
+    # Not list_devices(): it globs the nodes and then silently drops the ones
+    # it cannot open, so with no `input` group it returns an empty list and
+    # this function said "there are no input devices at all" about a machine
+    # with twenty-five of them. The nodes are counted first, and whether they
+    # can be opened is the next question rather than the same one.
+    paths = explicit if explicit is not None else sorted(
+        glob.glob("/dev/input/event*"))
     if not paths:
         return "there are no input devices at all"
 
