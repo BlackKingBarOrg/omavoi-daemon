@@ -136,9 +136,13 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
                 print(f"{DIM}  systemctl --user restart omavoid{RESET}")
                 return 1
             if not r.get("group_held"):
-                print(f"{DIM}  (this shell cannot read a device itself — the "
-                      f"daemon was started with the group and this login was "
-                      f"not. Only affects tools run from here.){RESET}")
+                # Worth saying, because it will surprise anyone who reads
+                # /dev/input by hand — but no longer worth a warning: capture
+                # goes through the daemon and doctor asks it too, so nothing
+                # the program does depends on this shell's own access.
+                print(f"{DIM}  (this login has no device access of its own — "
+                      f"the daemon was started with the group and this session "
+                      f"was not. Nothing here depends on it.){RESET}")
             return 0
 
         if r.get("daemon") != "running":

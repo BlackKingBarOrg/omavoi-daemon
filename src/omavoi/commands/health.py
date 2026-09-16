@@ -205,7 +205,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         nonlocal ok
         ok = ok and good
         mark = f"{GREEN}ok  {RESET}" if good else f"{RED}FAIL{RESET}"
-        print(f"  {mark} {label:<22}{detail}")
+        # A padded field and nothing else runs the two together the moment a
+        # label is longer than the column — "read by the daemonon 2 devices".
+        # One space always, and the column is one narrower so short rows land
+        # where they always did.
+        print(f"  {mark} {label:<21} {detail}")
 
     print(f"{BOLD}Omavoi {__version__}{RESET}\n")
 
@@ -229,20 +233,40 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         from ..hotkey import explain_missing
 
         code = key_code(cfg["hotkey"]["key"])
-        devices = find_devices(code)
-        # Not a guess. `id -nG` was the worst possible thing to point at
-        # here: it reports the groups this session inherited, so someone who
-        # ran usermod and did not log out sees `input` absent, concludes they
-        # are not in the group, runs usermod again, and is told the same thing
-        # forever. explain_missing asks the four questions separately.
-        check(f"{cfg['hotkey']['key']} readable on", bool(devices),
-              f"{len(devices)} device(s)" if devices
-              else f"{RED}nothing{RESET} — "
-                   + (explain_missing(code, cfg["hotkey"]["key"])
-                      or "no reason could be determined"))
-        for dev in devices:
-            print(f"    {DIM}{dev.path}  {dev.name}{RESET}")
-            dev.close()
+        key = str(cfg["hotkey"]["key"])
+
+        # The daemon first. This process opening a device says nothing about
+        # whether the key works — the daemon is what reads it, and the two can
+        # differ: a session that joined the `input` group after logging in
+        # cannot open a keyboard while a daemon started later reads the same
+        # ones. doctor said FAIL and exited 1 over a hotkey that was working,
+        # which is the third place in this program to have its own copy of
+        # that wrong answer.
+        # Asked here rather than reusing the daemon block further down: that
+        # one runs after this section, and one extra socket round trip is
+        # cheaper than reordering a function that prints in a fixed order.
+        live = (daemon.ping() or {}).get("hotkey") or {}
+        bound = live.get("devices") or []
+        if bound and live.get("enabled"):
+            check(f"{key} read by the daemon", True, f"{len(bound)} device(s)")
+            for name in bound:
+                print(f"    {DIM}{name}{RESET}")
+        else:
+            devices = find_devices(code)
+            # Not a guess. `id -nG` was the worst possible thing to point at
+            # here: it reports the groups this session inherited, so someone
+            # who ran usermod and did not log out sees `input` absent,
+            # concludes they are not in the group, runs usermod again, and is
+            # told the same thing forever. explain_missing asks separately.
+            check(f"{key} readable on", bool(devices),
+                  f"{len(devices)} device(s), but the daemon is reading none"
+                  if devices
+                  else f"{RED}nothing{RESET} — "
+                       + (explain_missing(code, key)
+                          or "no reason could be determined"))
+            for dev in devices:
+                print(f"    {DIM}{dev.path}  {dev.name}{RESET}")
+                dev.close()
     except Exception as exc:
         check("hotkey", False, str(exc))
 
