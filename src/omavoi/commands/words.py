@@ -98,13 +98,24 @@ def cmd_names(args: argparse.Namespace) -> int:
         return 0
 
     if args.action == "rm":
+        if not args.names:
+            print(f"{RED}usage: omavoi names rm <name> [<name> ...]{RESET}", file=sys.stderr)
+            return 1
         target = set(args.names)
+        have = {e.get("name") if isinstance(e, dict) else e for e in entries}
+        # Said "removed 0" and exited 0 for a name that was never in the list,
+        # so a typo read as success. `dict rm` names the one it could not find
+        # and exits 1; this is the same list of words and should answer alike.
+        absent = sorted(target - have)
         kept = [e for e in entries if (e.get("name") if isinstance(e, dict) else e) not in target]
         removed = len(entries) - len(kept)
-        cfg["dictionary"]["names"] = kept
-        config.write(cfg)
-        print(f"{GREEN}removed {removed}{RESET}")
-        return 0
+        if removed:
+            cfg["dictionary"]["names"] = kept
+            config.write(cfg)
+            print(f"{GREEN}removed {removed}{RESET}")
+        for name in absent:
+            print(f"{DIM}{name} is not in the names list{RESET}")
+        return 0 if removed and not absent else 1
 
     if args.action in ("dryrun", "enable"):
         # Only this branch reads past takes. It was imported at the top of

@@ -44,6 +44,15 @@ def load_wav(path: Path, want_rate: int = 16000) -> tuple[np.ndarray, int]:
     # signature does not need it at import time either.
     import numpy as np
 
+    # Checked here, because otherwise the first thing to notice is ffmpeg, and
+    # what it says is `Error opening input: No such file or directory` under a
+    # line of its own diagnostics — an answer about ffmpeg to a question about
+    # a filename.
+    if not path.exists():
+        raise SystemExit(f"no such file: {path}")
+    if path.is_dir():
+        raise SystemExit(f"{path} is a directory")
+
     try:
         with wave.open(str(path), "rb") as wav:
             if wav.getnchannels() == 1 and wav.getsampwidth() == 2 and wav.getframerate() == want_rate:
