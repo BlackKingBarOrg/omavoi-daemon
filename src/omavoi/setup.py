@@ -90,6 +90,24 @@ def _input_group() -> tuple[bool, bool]:
     return (user in entry.gr_mem, entry.gr_gid in os.getgroups())
 
 
+
+def _daemon_reads_the_key() -> bool:
+    """Whether the running daemon has a key listener with devices open.
+
+    Asked of the daemon rather than of this process, because they can differ
+    and only one of them matters. Absent or unreachable counts as no, which
+    leaves the checklist to answer from this process's own access — the best
+    evidence there is when there is nothing to ask.
+    """
+    try:
+        from . import daemon as daemon_mod
+
+        info = daemon_mod.ping()
+    except Exception:
+        return False
+    hk = (info or {}).get("hotkey") or {}
+    return bool(hk.get("enabled")) and bool(hk.get("devices"))
+
 def _in_input_group() -> bool:
     return _input_group()[1]
 
@@ -226,10 +244,21 @@ def check(cfg: dict[str, Any]) -> Report:
 
     # 4. The hotkey. This is the one step that cannot be finished in place.
     listed, held = _input_group()
-    # The middle state gets its own step, because the command that reaches the
-    # other two cannot reach it and offering one anyway sends the user round
-    # the same loop.
-    if listed and not held:
+    # The daemon first, and for the fourth time in this program: a step that
+    # reports "not done" about a feature that is working sends the user to fix
+    # something that is not broken. This process not holding the group says
+    # nothing about the daemon's access — the daemon can have been started
+    # through newgrp, or simply started after the group was granted.
+    if _daemon_reads_the_key():
+        steps.append(Step(
+            "hotkey", f"Hotkey ({cfg['hotkey']['key']} via evdev)", True,
+            detail="the daemon is reading it",
+            command="",
+            needs_root=False,
+            optional=True,
+            note="",
+        ))
+    elif listed and not held:
         steps.append(Step(
             "hotkey", f"Hotkey ({cfg['hotkey']['key']} via evdev)", False,
             detail="in the input group, but this session started before that",

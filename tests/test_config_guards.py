@@ -59,3 +59,36 @@ def test_switching_mode_follows_the_modes_that_exist(home):
     legal, _ = settings._legal_values("switching.mode", cfg)
     assert set(legal) == set(cfg["modes"])
     assert "default" in legal
+
+
+def test_numbers_outside_their_range_are_refused(home):
+    """`audio.preroll_seconds 99` was accepted — ninety-nine seconds of
+    pre-roll from a ring buffer that does not hold it — and `warn_rms_dbfs
+    500`, a positive number for a quantity that is negative by definition."""
+    for key, bad in (("audio.preroll_seconds", "99"),
+                     ("audio.warn_rms_dbfs", "500"),
+                     ("history.keep_audio", "-5"),
+                     ("audio.max_seconds", "1"),
+                     ("hotkey.rescan_seconds", "0")):
+        why = settings._why_not_that_number(key, bad)
+        assert why, f"{key}={bad} was accepted"
+        assert key in why, "the message has to name the key it is about"
+
+
+def test_a_number_that_is_not_one_is_refused(home):
+    why = settings._why_not_that_number("audio.max_seconds", "abc")
+    assert "not a number" in why
+
+
+def test_the_shipped_defaults_are_all_inside_their_own_ranges(home):
+    """A range that refuses the value the program ships with is the guard
+    this project has already shipped once."""
+    cfg = config.load()
+    for key in settings._RANGES:
+        node, parts = cfg, key.split(".")
+        for p in parts[:-1]:
+            node = node.get(p, {})
+        value = node.get(parts[-1])
+        assert value is not None, f"{key} is not in the shipped config"
+        why = settings._why_not_that_number(key, str(value))
+        assert why == "", f"the default {value} for {key} is refused: {why}"

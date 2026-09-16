@@ -157,6 +157,30 @@ def _hf_dirname(repo: str) -> str:
     return "models--" + repo.replace("/", "--")
 
 
+def bytes_in_flight(key: str) -> int:
+    """How much of `key` is on disk so far, mid-download, or 0.
+
+    A three-gigabyte download said "downloading" and nothing else until it
+    finished, so there was no way to tell a slow mirror from a stalled one.
+    huggingface_hub with local_dir= writes to
+    `<dir>/.cache/huggingface/download/<filename>.incomplete`, and its length
+    is the answer. Read rather than reported by the downloader itself because
+    the download runs in another process — the console asks the catalogue,
+    which is a file on disk either way.
+    """
+    entry = spec(key)
+    if entry is None or not entry.filename:
+        return 0
+    root = model_root()
+    for directory in (llm_dir() if entry.kind == LLM else root / "ggml",):
+        part = directory / ".cache" / "huggingface" / "download" / f"{entry.filename}.incomplete"
+        try:
+            return part.stat().st_size
+        except OSError:
+            return 0
+    return 0
+
+
 def local_path(key: str) -> Path | None:
     """Where this model is on disk, or None."""
     entry = spec(key)

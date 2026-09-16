@@ -63,6 +63,38 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
     return (), ""
 
 
+# Keys whose value is a number with a range, and what happens outside it.
+# `config set audio.preroll_seconds 99` was accepted — ninety-nine seconds of
+# pre-roll, from a ring buffer that does not hold it — and so was
+# `warn_rms_dbfs 500`, a positive number for a quantity that is negative by
+# definition. Neither produced an error anywhere; they simply made the program
+# behave oddly.
+_RANGES: dict[str, tuple[float, float, str]] = {
+    "audio.preroll_seconds": (0.0, 5.0, "seconds of audio kept before the key"),
+    "audio.tail_seconds": (0.0, 2.0, "seconds kept after the key is released"),
+    "audio.warn_rms_dbfs": (-90.0, 0.0, "dBFS, which is negative below full scale"),
+    "audio.max_seconds": (5.0, 3600.0, "seconds one take may run"),
+    "audio.min_seconds": (0.0, 10.0, "seconds below which a take is dropped"),
+    "history.keep_audio": (0.0, 500.0, "recordings kept on disk"),
+    "hotkey.rescan_seconds": (0.5, 60.0, "seconds between device rescans"),
+}
+
+
+def _why_not_that_number(key: str, value: str) -> str:
+    """Why this number is outside what the key can use, or "" if it is not."""
+    limits = _RANGES.get(str(key))
+    if limits is None:
+        return ""
+    low, high, what = limits
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return f"{value!r} is not a number. {key} is {what}"
+    if n < low or n > high:
+        return (f"{value} is outside {low:g}–{high:g} — {key} is {what}")
+    return ""
+
+
 def _why_not_that_choice(key: str, value: str) -> str:
     """Why this value is not one of the ones the key accepts."""
     cfg = config.load()
@@ -105,7 +137,8 @@ def cmd_config(args: argparse.Namespace) -> int:
         why = _why_not_that_hotkey(args.key, args.value) \
             or _why_not_that_llm_model(args.key, args.value) \
             or _why_not_that_provider(args.key, args.value) \
-            or _why_not_that_choice(args.key, args.value)
+            or _why_not_that_choice(args.key, args.value) \
+            or _why_not_that_number(args.key, args.value)
         if why and not getattr(args, "force", False):
             print(f"{RED}{why}{RESET}", file=sys.stderr)
             print(f"{DIM}nothing was changed; repeat with --force to set it anyway"

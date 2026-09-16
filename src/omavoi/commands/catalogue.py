@@ -171,6 +171,9 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "backend": spec.backend, "size_mb": spec.size_mb,
                     "note": i18n.t(spec.note, lang), "tags": list(spec.tags),
                     "downloaded": models.is_downloaded(spec.key),
+                # Bytes so far when one is in flight, so a three-gigabyte wait
+                # can show progress instead of the word "downloading".
+                "bytes_now": models.bytes_in_flight(spec.key),
                     "path": str(models.local_path(spec.key) or ""),
                     "ours": models.owned_by_us(spec.key),
                     "active": (spec.key in llm_chosen
