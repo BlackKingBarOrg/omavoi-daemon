@@ -12,10 +12,13 @@ dictation, it must not swallow it.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import shutil
 import time
 from typing import Any
+
+import numpy as np
 
 from . import asr, modes, notify, post
 from . import names as names_mod
@@ -28,6 +31,41 @@ from .window import Window, active_window
 
 log = logging.getLogger(__name__)
 
+
+
+def _opens_mid_speech(capture: Capture, *, head_ms: float = 120.0,
+                      margin_db: float = 6.0) -> str:
+    """"" if the take opens on room tone, a warning if it opens on speech.
+
+    The old test asked the transcript where its first segment began, which is
+    where whisper.cpp always begins one — 0.00 on 38 of 40 takes in a row,
+    none of them actually clipped. This asks the only thing that can answer
+    it: whether the first 120 ms is already as loud as the take as a whole. A
+    quiet head is the pre-roll doing its job.
+    """
+    rate = int(getattr(capture, "rate", 0) or 0)
+    samples = getattr(capture, "samples", None)
+    if not rate or samples is None or len(samples) < rate // 4:
+        return ""
+    # A floor of its own, so a direct caller gets the same answer the pipeline
+    # does without having to know to check for silence first.
+    floor_db = -50.0
+    head = samples[: max(1, int(rate * head_ms / 1000.0))]
+    if head.size == 0:
+        return ""
+
+    def dbfs(block) -> float:
+        rms = float(np.sqrt(np.mean(np.square(block.astype(np.float64)))))
+        return 20.0 * math.log10(max(rms, 1e-9))
+
+    head_db, whole_db = dbfs(head), dbfs(samples)
+    if whole_db < floor_db:
+        return ""
+    if head_db < whole_db - margin_db:
+        return ""
+    return (f"the take opens at speech level ({head_db:.1f} dBFS against "
+            f"{whole_db:.1f} overall) — the first syllable may be missing; "
+            f"raise audio.preroll_seconds if words are going astray")
 
 class Pipeline:
     def __init__(
@@ -118,6 +156,18 @@ class Pipeline:
             )
         if capture.truncated:
             warnings.append("the ring buffer wrapped; the start of this take was lost")
+        # Whether the take opens mid-word, asked of the waveform. The pre-roll
+        # reaches back before the keypress, so a healthy take begins with room
+        # tone; an opening already at speech level means the buffer window
+        # started after the first syllable.
+        # Only on a take that has speech in it. Uniform silence has a head as
+        # loud as its whole and would trip this, but nothing was clipped — the
+        # quiet-input warning above is the right voice for that, and one
+        # problem should not get two.
+        if not quiet:
+            onset = _opens_mid_speech(capture)
+            if onset:
+                warnings.append(onset)
 
         # Resolve where the text is going now: that decides the mode.
         win = window if window is not None else active_window()

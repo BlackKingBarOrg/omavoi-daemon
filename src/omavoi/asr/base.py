@@ -55,8 +55,16 @@ class Transcript:
 
     @property
     def first_speech_at(self) -> float:
-        """When speech starts. Large values on a push-to-talk take mean the
-        pre-roll saved you; near-zero means it may have clipped the onset."""
+        """Where the first segment begins.
+
+        Kept because it is worth seeing in a diagnostic, but it is not a
+        measure of when speech started and no warning is built on it any
+        more: whisper.cpp segments from the beginning of the clip, so this
+        was 0.00 on 38 of 40 consecutive takes — every one of which produced
+        text perfectly well. A warning that fires on healthy takes teaches
+        you to ignore it, and then it is not there the once it matters. The
+        onset is measured from the waveform in pipeline.py instead.
+        """
         return self.segments[0].start if self.segments else 0.0
 
     def warnings(self, *, logprob_floor: float = -1.0) -> list[str]:
@@ -66,8 +74,6 @@ class Transcript:
             out.append(f"low confidence: avg_logprob={self.min_avg_logprob:.2f} — words may be wrong or missing")
         if self.max_no_speech > 0.6:
             out.append(f"probably silence: no_speech_prob={self.max_no_speech:.2f} — the text may be invented")
-        if self.segments and self.first_speech_at < 0.05:
-            out.append("speech starts at 0.00s — the beginning may have been clipped")
         return out
 
     def as_dict(self) -> dict[str, Any]:
