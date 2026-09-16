@@ -232,8 +232,14 @@ unloads the local LLM it was using, and the fit check counts that memory as
 available, so switching between an LLM mode and a speech-only one is not
 blocked by the model on its way out.
 
-Not yet: the dictionary's history-mined suggestions and its try-it box, sliders
-in settings rather than read-only values, and a real byte-level progress bar
-for model downloads.
+The HUD reads its own settings: whether to show it at all, how long a result
+stays up, and how big the strip is. All three were config keys that nothing
+read — the settings page offered three dwell buttons and had one behaviour —
+so a `hud_position` of `cursor` or `window`, which was never built, is now
+refused by `config set` rather than accepted and ignored.
+
+Not yet: the dictionary's history-mined suggestions and its try-it box; a
+modifier held to force a mode for one take; and the HUD at the cursor or over
+the focused window rather than at the bottom of the screen.
 
 MIT.
