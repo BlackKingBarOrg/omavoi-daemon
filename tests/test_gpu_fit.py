@@ -86,7 +86,8 @@ def test_nothing_to_interrogate_must_not_block(monkeypatch):
     refusing to start.
     """
     for info in ({}, {"unified": True, "total_mb": 32000, "free_mb": 100}):
-        monkeypatch.setattr(gpu, "vram", lambda **kw: info)
+        # Bound, not captured: the lambda outlives the iteration it is made in.
+        monkeypatch.setattr(gpu, "vram", lambda _i=info, **kw: _i)
         out = gpu.fits(20000)
         assert out["fits"] is True, info
         assert out["known"] is False, "it must not claim to know"
