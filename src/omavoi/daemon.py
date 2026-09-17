@@ -44,7 +44,8 @@ class Daemon:
 
         self.audio = RingCapture(cfg)
         self.backend = asr.build(cfg)
-        self.pipeline = Pipeline(cfg, self.backend, Injector(cfg), History(cfg))
+        self.pipeline = Pipeline(cfg, self.backend, Injector(cfg), History(cfg),
+                                 on_stage=self._stage)
         # hotkey.force_mode: always this mode, whatever window is in front.
         # config.validate has been checking it is a real mode since it was
         # added, and nothing ever read it — so the key was documented,
@@ -126,6 +127,17 @@ class Daemon:
                 "seconds": round(time.monotonic() - self._started_at, 2),
             })
             time.sleep(0.05)
+
+    def _stage(self, stage: str, detail: str = "") -> None:
+        """Say which phase of a take this is, without changing the state.
+
+        The whole take is one `transcribing` state — deliberately, because
+        the bar module, the state file and the console all switch on those
+        three and a fourth would break them. But a 0.25 s whisper pass and a
+        ten-second LLM step look identical from outside it, and the overlay
+        sat there with a motionless line while an LLM took its time.
+        """
+        self._broadcast({"event": "stage", "stage": stage, "detail": detail})
 
     def _set_state(self, state: str) -> None:
         previous = self._state
@@ -344,6 +356,11 @@ class Daemon:
                 "hud": bool(self.cfg["ui"].get("hud", True)),
                 "hud_dwell": str(self.cfg["ui"].get("hud_dwell", "changed")),
                 "hud_size": str(self.cfg["ui"].get("hud_size", "s")),
+                # The overlay has its own string table and no config file to
+                # read, so without this it fell back to the system locale —
+                # and the one surface you see on every take was the one
+                # surface that ignored the language you picked.
+                "language": str(self.cfg["ui"].get("language", "") or ""),
             },
             "hotkey": {
                 "enabled": bool(self.hotkey),
@@ -498,7 +515,7 @@ class Daemon:
         llms = self.pipeline.llms
         llms.update(new)
         self.pipeline = Pipeline(new, self.backend, Injector(new), History(new),
-                                 registry=llms)
+                                 registry=llms, on_stage=self._stage)
         self._release_idle_llms()
         self._apply_mode_speech_model()
         self._rebind_hotkey()

@@ -16,6 +16,7 @@ import math
 import re
 import shutil
 import time
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -74,12 +75,28 @@ class Pipeline:
         injector: Injector | None = None,
         history: History | None = None,
         registry: Registry | None = None,
+        # Called as the take moves between phases, with a stable id and an
+        # optional detail. The daemon broadcasts it so the overlay can say
+        # what is taking the time: the whole take is one "transcribing"
+        # state, and a 0.25 s whisper pass and a ten-second LLM step look
+        # identical from outside it.
+        on_stage: Callable[[str, str], None] | None = None,
     ) -> None:
         self.cfg = cfg
         self.backend = backend
         self.injector = injector or Injector(cfg)
         self.history = history or History(cfg)
         self.llms = registry or Registry(cfg)
+        self._on_stage = on_stage
+
+    def _stage(self, stage: str, detail: str = "") -> None:
+        """Say which phase this is. Never let a listener break a take."""
+        if self._on_stage is None:
+            return
+        try:
+            self._on_stage(stage, detail)
+        except Exception:
+            log.debug("stage listener failed", exc_info=True)
 
     # -- chain -------------------------------------------------------------
 
@@ -89,6 +106,9 @@ class Pipeline:
         current = text
 
         for index, step in enumerate(mode.steps):
+            # Before the lookup, which can start a llama server and take
+            # seconds on its own.
+            self._stage("llm", f"{index + 1}/{len(mode.steps)}")
             backend = self.llms.get(step.llm, getattr(step, "model", "") or "")
             if backend is None:
                 why = self.llms.why(step.llm)
@@ -174,6 +194,9 @@ class Pipeline:
         # produce a name is cheaper and cleaner than fixing it afterwards.
         index = names_mod.NameIndex(cfg, mode.name)
         seed = index.seed_text() if mode.rules.get("names", True) else ""
+        # The speech pass. Usually a quarter of a second; minutes if the
+        # server has to load 3 GB of weights first.
+        self._stage("decoding")
         prompt = "\n".join(p for p in (mode.prompt, seed) if p)
 
         try:
@@ -257,6 +280,7 @@ class Pipeline:
             profile: dict[str, Any] = {"inject": mode.inject}
             if mode.paste_key:
                 profile["paste_key"] = mode.paste_key
+            self._stage("injecting")
             outcome = self.injector.inject(final, win, profile)
             entry["inject"] = outcome.as_dict()
             if not outcome.ok:
