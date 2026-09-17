@@ -140,4 +140,123 @@ def test_the_payload_carries_it():
     from omavoi.commands import catalogue
 
     src = inspect.getsource(catalogue.cmd_model)
-    assert '"languages": spec.languages' in src, "the console cannot see it"
+    assert '"languages":' in src, "the console cannot see it"
+
+
+# -- the names feature, which was calibrated on Chinese -------------------
+
+
+@pytest.mark.parametrize("name,matches", [
+    # Measured against one paragraph: every Latin name whose phonetic key is
+    # one or two characters rewrote something else.
+    ("Al", "all"), ("Bo", "Bob"), ("Ana", "Anna"), ("Bob", "bay"),
+    ("Ian", "in"), ("Marie", "more"),
+])
+def test_a_latin_name_with_too_little_sound_does_not_match(home, name, matches):
+    """`min_chars` counted written characters and 2 was chosen where two
+    characters is a whole name — 李明. In Latin script what decides the
+    danger is the key's length, not the name's: Bo and Bob both reduce to
+    the consonant skeleton B, which is the key of by, bay, be and boy.
+    """
+    from omavoi import names
+
+    cfg = config.load()
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": name, "seed": True, "enabled": True, "group": ""}]
+    text = "Alice asked about all the analysis, and Bob bought a bay more in."
+    out, hits = names.NameIndex(cfg).apply(text)
+    assert out == text, f"{name!r} rewrote something: {hits}"
+
+
+@pytest.mark.parametrize("name", ["Alice", "Søren", "Alexander", "Kwame", "Chloé"])
+def test_a_latin_name_with_enough_sound_still_matches(home, name):
+    """The guard must not turn the feature off for ordinary names."""
+    from omavoi import names
+
+    cfg = config.load()
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": name, "seed": True, "enabled": True, "group": ""}]
+    index = names.NameIndex(cfg)
+    assert not names._too_vague("phonetic", names.phonetic_key(name)), name
+    # And it is still seeded whatever the guard says — that is the mechanism
+    # that makes the model write it correctly in the first place.
+    assert name in index.seed_text()
+
+
+@pytest.mark.parametrize("name,vague", [
+    ("李", True), ("陈", True),           # one syllable is a homophone
+    ("李明", False), ("王小波", False),
+])
+def test_a_one_syllable_cjk_name_does_not_match(home, name, vague):
+    from omavoi import names
+
+    assert names._too_vague("pinyin", names.pinyin_key(name)) is vague, name
+
+
+def test_the_seed_budget_counts_tokens_not_characters(home):
+    """Whisper's cap is 224 tokens. This counted characters, on the grounds
+    that a CJK character is about one token — true, and the reason it was
+    wrong for everyone else: "Alexander" is nine characters and about three
+    tokens, so a list of Latin names was budgeted at three times its cost
+    and most of it was dropped for room that was never needed.
+    """
+    from omavoi import names
+
+    cfg = config.load()
+    latin = [f"Alexander{i:02d}" for i in range(40)]
+    cfg.setdefault("dictionary", {})["names"] = [
+        {"name": n, "seed": True, "enabled": False, "group": ""} for n in latin]
+    seeded, dropped = names.NameIndex(cfg).seed_split()
+    assert not dropped, f"{len(dropped)} dropped; the old count seeded only 17"
+    assert len(seeded) == 40
+
+    # A CJK list is unchanged: one token per character was always right there.
+    cjk = [f"李明{chr(0x4e00 + i)}" for i in range(40)]
+    cfg["dictionary"]["names"] = [
+        {"name": n, "seed": True, "enabled": False, "group": ""} for n in cjk]
+    seeded, dropped = names.NameIndex(cfg).seed_split()
+    assert not dropped and len(seeded) == 40
+
+
+# -- the locale, which only the console followed --------------------------
+
+
+@pytest.mark.parametrize("locale,want", [
+    ("de_DE.UTF-8", "de"), ("ja_JP.UTF-8", "ja"), ("zh_CN.UTF-8", "zh"),
+    ("en_US.UTF-8", "en"),
+    # No pack for these, so English rather than nothing.
+    ("pt_BR.UTF-8", "en"), ("", "en"),
+])
+def test_an_unset_ui_language_follows_the_locale(monkeypatch, locale, want):
+    """The console has done this since it was written; this side had not, so
+    a German who never opened the language dropdown got a German console
+    with English model descriptions on it."""
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(var, raising=False)
+    if locale:
+        monkeypatch.setenv("LANG", locale)
+    assert i18n.ui_lang({}) == want
+
+
+def test_an_explicit_ui_language_wins_over_the_locale(monkeypatch):
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    assert i18n.ui_lang({"ui": {"language": "ja"}}) == "ja"
+
+
+def test_both_outputs_translate_the_same_notes():
+    """`model list` printed English while --json returned German, out of one
+    table. The text branch is where a terminal user reads it."""
+    import inspect
+
+    from omavoi.commands import catalogue
+
+    src = inspect.getsource(catalogue.cmd_model)
+    assert src.count("i18n.t(spec.note") == 2, "one of the two paths is raw"
+    assert src.count("i18n.t(spec.languages") == 2
+
+
+def test_every_languages_value_is_translated():
+    """Or the model table is half in one language."""
+    missing = sorted({entry.languages for entry in models.CATALOG}
+                     - set(i18n._TABLE))
+    assert not missing, missing

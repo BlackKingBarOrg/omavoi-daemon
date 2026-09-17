@@ -62,6 +62,48 @@ def pinyin_key(text: str, *, tones: bool = False) -> str:
     return " ".join(lazy_pinyin(text, style=style, errors="ignore"))
 
 
+def _token_cost(name: str) -> int:
+    """Roughly what one seeded name costs of whisper's 224-token prompt.
+
+    A CJK character is about one token. Latin text is about one token per
+    three to four characters, and three is the conservative end. Plus one
+    for the ", " that joins them. Rounded up throughout, because
+    under-counting overruns the prompt and whisper truncates it silently —
+    the tail names then reach nothing, which is the failure this budget
+    exists to avoid.
+    """
+    cjk = sum(1 for ch in name if _CJK.match(ch))
+    rest = len(name) - cjk
+    return cjk + -(-rest // 3) + 1
+
+
+def _too_vague(kind: str, key: str) -> bool:
+    """Whether this key carries too little sound to match on.
+
+    `min_chars` counts written characters, and 2 was chosen where 2
+    characters is a whole name — 李明. In Latin script 2 characters is a
+    nickname, and what actually decides the danger is not the name's length
+    but its key's: `Bo` and `Bob` both reduce to the consonant skeleton `B`,
+    which is the key of by, bay, be, boy and Bob. Measured against one
+    paragraph, every Latin name whose key was one or two characters rewrote
+    something else — Al over "all", Ana over "Anna", Ian over "in", Marie
+    over "more" — and every name with a three-character key was clean.
+
+    The two key spaces are not comparable, so the rule is one of specificity
+    in each. A phonetic key is a consonant skeleton, one character per sound
+    class, and needs three. A pinyin key is whole syllables separated by
+    spaces, and needs two: one syllable is a homophone of a hundred things,
+    which is why 李 is blocked and 李明 is not.
+
+    This turns off sound *matching* only. The name still goes into the
+    decoder prompt, which is the mechanism that makes the model write it
+    correctly in the first place.
+    """
+    if kind == "pinyin":
+        return len(key.split()) < 2
+    return len(key) < 3
+
+
 def _ratio(a: str, b: str) -> float:
     """Similarity in [0,1]. Cheap Levenshtein over short keys."""
     if a == b:
@@ -171,9 +213,13 @@ class NameIndex:
         with nothing said anywhere. Someone who adds thirty names sees thirty
         in `names list` and hands the decoder however many happened to fit.
 
-        Budgeted in characters rather than real tokens: whisper's prompt cap
-        is 224 tokens, and a CJK name costs roughly one token per character,
-        so characters are the conservative estimate.
+        Budgeted by an estimate of tokens, per script. Whisper's prompt cap
+        is 224 tokens; this used to count characters instead, on the grounds
+        that a CJK name costs roughly one token per character — true, and
+        the reason it was wrong for everyone else. "Alexander" is nine
+        characters and about three tokens, so a list of Latin names was
+        budgeted at three to four times its real cost and most of it was
+        dropped for room that was never needed.
         """
         if not self.seed_enabled:
             return [], [e.name for e in self.entries if e.seed]
@@ -183,7 +229,7 @@ class NameIndex:
         dropped: list[str] = []
         used = 0
         for entry in wanted:
-            cost = len(entry.name) + 2
+            cost = _token_cost(entry.name)
             # Not `break`: a long name early on should not hide every short
             # one behind it, and the list is in most-used-first order, so
             # carrying on spends the rest of the budget where it is worth most.
@@ -195,9 +241,9 @@ class NameIndex:
         return picked, dropped
 
     def seed_chars(self) -> int:
-        """What the seeded names cost against the budget."""
+        """What the seeded names cost against the budget, in tokens."""
         picked, _ = self.seed_split()
-        return sum(len(n) + 2 for n in picked)
+        return sum(_token_cost(n) for n in picked)
 
     def seed_text(self) -> str:
         picked, _ = self.seed_split()
@@ -212,7 +258,7 @@ class NameIndex:
 
         hits: list[Hit] = []
         for entry, kind, key in self._keys:
-            if len(entry.name) < self.min_chars:
+            if len(entry.name) < self.min_chars or _too_vague(kind, key):
                 continue
             finder = self._find_cjk if kind == "pinyin" else self._find_latin
             for hit in finder(text, entry, key):

@@ -11,7 +11,7 @@ import json
 import sys
 from typing import Any
 
-from .. import asr, config, ipc, models
+from .. import asr, config, i18n, ipc, models
 from ..llm.agent_cli import puts_transcript_in_argv as agent_argv_exposed
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
@@ -123,10 +123,13 @@ def cmd_model(args: argparse.Namespace) -> int:
         cfg = config.load()
         active = cfg["speech"]["model"]
         if args.json:
-            from .. import gpu, i18n
+            from .. import gpu
 
             # The console renders these notes verbatim, so they are translated
             # here rather than there: the text lives beside the catalogue.
+            # i18n is imported at module scope — importing it here as well
+            # made it a local for the whole function, and the text branch
+            # further down then raised UnboundLocalError.
             lang = i18n.ui_lang(cfg)
 
             # The config says which model was asked for; only the daemon knows
@@ -184,7 +187,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                     # reached no user — which mattered most for the thing it
                     # would have said: the default speech model is a
                     # distillation and is not even across languages.
-                    "languages": spec.languages,
+                    "languages": i18n.t(spec.languages, lang),
                     "running": _is_running(spec),
                 })
             from .. import gpu, secrets
@@ -278,6 +281,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                               "daemon": bool(live),
                               "vram": _vram_split(engines)}, ensure_ascii=False, indent=2))
             return 0
+        text_lang = i18n.ui_lang(cfg)
         print(f"{BOLD}  {'model':<24}{'size':>7}  {'state':<10}notes{RESET}")
         groups = [
             (models.GGML, models.SPEECH, "speech · local-whispercpp (Vulkan)"),
@@ -295,9 +299,15 @@ def cmd_model(args: argparse.Namespace) -> int:
                 mark = f"{GREEN}*{RESET}" if current else (f"{DIM}.{RESET}" if here else " ")
                 state = f"{GREEN}local{RESET}" if here else f"{DIM}remote{RESET}"
                 tag = f" {YELLOW}[recommended]{RESET}" if "recommended" in spec.tags else ""
-                print(f"{mark} {spec.key:<24}{spec.size_mb / 1024:>6.1f}G  {state:<18}{spec.note}{tag}")
+                # Translated here too. The --json branch above has done this
+                # since it was written, so a German console showed German
+                # notes and `omavoi model list` in a terminal showed English
+                # ones, out of the same table.
+                print(f"{mark} {spec.key:<24}{spec.size_mb / 1024:>6.1f}G  {state:<18}"
+                      f"{i18n.t(spec.note, text_lang)}{tag}")
                 if spec.languages:
-                    print(f"  {'':<24}{'':>6}  {DIM}{spec.languages}{RESET}")
+                    print(f"  {'':<24}{'':>6}  "
+                          f"{DIM}{i18n.t(spec.languages, text_lang)}{RESET}")
         print(f"\n{DIM}* = in use   . = downloaded   stored in {models.model_root()}{RESET}")
         return 0
 

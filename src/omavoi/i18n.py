@@ -13,6 +13,8 @@ Eight languages, the same set the console offers: en, de, es, fr, vi, zh, ja, th
 
 from __future__ import annotations
 
+import os
+
 _ZH = "zh"
 _TH = "th"
 _DE = "de"
@@ -44,6 +46,69 @@ DEFAULT_STEP_PROMPT = (
 
 # en -> {lang: text}
 _TABLE: dict[str, dict[str, str]] = {
+    "en in practice": {
+        _ZH: "实际上只有英文可用",
+        _TH: "ใช้ได้จริงแค่ภาษาอังกฤษ",
+        _DE: "in der Praxis nur Englisch",
+        _FR: "en pratique, l'anglais seulement",
+        _ES: "en la práctica, solo inglés",
+        _JA: "実際には英語のみ",
+        _VI: "trên thực tế chỉ tiếng Anh",
+    },
+    "en and the other high-resource languages": {
+        _ZH: "英文和其他资料充足的语言",
+        _TH: "อังกฤษและภาษาที่มีข้อมูลมากอื่น ๆ",
+        _DE: "Englisch und die anderen ressourcenreichen Sprachen",
+        _FR: "l'anglais et les autres langues bien dotées",
+        _ES: "inglés y los demás idiomas con muchos recursos",
+        _JA: "英語とその他の資料が豊富な言語",
+        _VI: "tiếng Anh và các ngôn ngữ nhiều dữ liệu khác",
+    },
+    "all 99, unevenly": {
+        _ZH: "全部 99 种，但不均匀",
+        _TH: "ทั้ง 99 ภาษา แต่ไม่สม่ำเสมอ",
+        _DE: "alle 99, ungleichmäßig",
+        _FR: "les 99, de façon inégale",
+        _ES: "los 99, de forma desigual",
+        _JA: "99 言語すべて、ただし不均一",
+        _VI: "cả 99, nhưng không đồng đều",
+    },
+    "all 99, evenly": {
+        _ZH: "全部 99 种，比较均匀",
+        _TH: "ทั้ง 99 ภาษา อย่างสม่ำเสมอ",
+        _DE: "alle 99, gleichmäßig",
+        _FR: "les 99, de façon égale",
+        _ES: "los 99, de forma uniforme",
+        _JA: "99 言語すべて、均等に",
+        _VI: "cả 99, một cách đồng đều",
+    },
+    "all 99, unevenly — it is a distillation": {
+        _ZH: "全部 99 种但不均匀 —— 它是蒸馏版",
+        _TH: "ทั้ง 99 ภาษาแต่ไม่สม่ำเสมอ — เป็นรุ่นกลั่น",
+        _DE: "alle 99, ungleichmäßig — es ist eine Destillation",
+        _FR: "les 99, de façon inégale — c'est une distillation",
+        _ES: "los 99, de forma desigual — es una destilación",
+        _JA: "99 言語すべてだが不均一 — 蒸留モデルです",
+        _VI: "cả 99 nhưng không đồng đều — đây là bản chưng cất",
+    },
+    "strong zh/en": {
+        _ZH: "中英文强",
+        _TH: "เก่งจีนกับอังกฤษ",
+        _DE: "stark in zh/en",
+        _FR: "solide en zh/en",
+        _ES: "fuerte en zh/en",
+        _JA: "中国語・英語に強い",
+        _VI: "mạnh tiếng Trung/Anh",
+    },
+    "broad multilingual": {
+        _ZH: "多语言覆盖广",
+        _TH: "รองรับหลายภาษาอย่างกว้างขวาง",
+        _DE: "breit mehrsprachig",
+        _FR: "largement multilingue",
+        _ES: "ampliamente multilingüe",
+        _JA: "幅広い多言語対応",
+        _VI: "đa ngữ rộng",
+    },
     "The same strengths with more room. Pick it if you dictate in Chinese.": {
         _ZH: "同样的长处，空间更大。如果你用中文口述就选它。",
         _TH: "จุดแข็งเดียวกันแต่มีที่มากกว่า เลือกตัวนี้ถ้าคุณพูดภาษาจีน",
@@ -221,6 +286,31 @@ def t(text: str, lang: str) -> str:
     return entry.get(lang[:2], text)
 
 
+def from_environment() -> str:
+    """The two-letter language of the locale, if this table has it.
+
+    The console has done this since it was written — Qt.locale().name, cut
+    to two letters, falling through to English for a locale with no pack.
+    This side did not: ui_lang returned "" for an unset ui.language and t()
+    reads "" as English. So a German who had never opened the language
+    dropdown got a German console with English model descriptions on it,
+    which is not a smaller bug than the wrong language, it is a more
+    confusing one.
+    """
+    for var in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(var) or ""
+        code = value.split(".")[0].split("_")[0].strip().lower()
+        if code and code in LANGUAGES:
+            return code
+        if code:
+            # A locale we have no pack for is an answer: stop looking, and
+            # fall back to English rather than to the next variable, which
+            # is usually the less specific one.
+            return "en"
+    return "en"
+
+
 def ui_lang(cfg: dict) -> str:
-    """The configured UI language; "" when it follows the environment."""
-    return str((cfg.get("ui") or {}).get("language", "") or "")
+    """The language to render in: ui.language, or the locale when it is unset."""
+    configured = str((cfg.get("ui") or {}).get("language", "") or "")
+    return configured or from_environment()

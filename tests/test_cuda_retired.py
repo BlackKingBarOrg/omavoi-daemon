@@ -108,7 +108,9 @@ def test_the_migration_runs_on_load(home):
 
 def test_no_translation_describes_a_model_that_is_gone():
     """The eight ct2 notes were translated into seven languages each."""
-    live = {entry.note for entry in models.CATALOG} | {config.DEFAULT_STEP_PROMPT}
+    live = ({entry.note for entry in models.CATALOG}
+            | {entry.languages for entry in models.CATALOG}
+            | {config.DEFAULT_STEP_PROMPT})
     orphans = [key for key in i18n._TABLE if key not in live]
     assert not orphans, orphans
 

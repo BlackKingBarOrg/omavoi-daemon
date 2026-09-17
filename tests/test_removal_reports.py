@@ -99,13 +99,14 @@ def test_names_past_the_seed_budget_are_reported(home, capsys):
     cfg = config.load()
     cfg.setdefault("dictionary", {})["names"] = [
         {"name": f"Name{i:02d}", "seed": True, "enabled": False, "group": ""}
-        for i in range(40)
+        for i in range(120)
     ]
     index = names.NameIndex(cfg)
     seeded, dropped = index.seed_split()
 
-    assert seeded and dropped, "40 short names should overrun a 224-char budget"
-    assert len(seeded) + len(dropped) == 40, "every name must be in one list"
+    # Three tokens each by the estimate, so 120 of them overrun 224.
+    assert seeded and dropped, "120 short names should overrun a 224-token budget"
+    assert len(seeded) + len(dropped) == 120, "every name must be in one list"
     assert index.seed_chars() <= index.budget, "the seeded names must fit"
     assert set(seeded).isdisjoint(dropped)
     assert index.seed_text() == ", ".join(seeded)
@@ -122,20 +123,24 @@ def test_the_budget_is_spent_not_abandoned_at_the_first_overrun(home):
 
     cfg = config.load()
     cfg.setdefault("dictionary", {})["names"] = [
-        {"name": "A" * 210, "seed": True, "enabled": False, "group": "", "hits": 99},
-        {"name": "B" * 210, "seed": True, "enabled": False, "group": "", "hits": 50},
-        {"name": "Kim", "seed": True, "enabled": False, "group": "", "hits": 10},
+        # ~71 tokens each by the estimate, so three fit in 224 and the
+        # fourth does not — while Kim, at three tokens, always does.
+        *[{"name": letter * 210, "seed": True, "enabled": False,
+           "group": "", "hits": 99 - i}
+          for i, letter in enumerate("ABCD")],
+        {"name": "Kim", "seed": True, "enabled": False, "group": "", "hits": 1},
     ]
     seeded, dropped = names.NameIndex(cfg).seed_split()
     assert "Kim" in seeded, "a short name after a long one still fits the budget"
-    assert dropped == ["B" * 210]
+    assert dropped, "four long names must overrun 224 tokens"
+    assert all(len(name) == 210 for name in dropped), dropped
 
 
 def test_names_list_says_what_did_not_fit(home, capsys):
     cfg = config.load()
     cfg.setdefault("dictionary", {})["names"] = [
         {"name": f"Name{i:02d}", "seed": True, "enabled": False, "group": ""}
-        for i in range(40)
+        for i in range(120)
     ]
     config.write(cfg)
     capsys.readouterr()
