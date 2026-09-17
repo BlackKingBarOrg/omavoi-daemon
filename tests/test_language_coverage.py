@@ -260,3 +260,27 @@ def test_every_languages_value_is_translated():
     missing = sorted({entry.languages for entry in models.CATALOG}
                      - set(i18n._TABLE))
     assert not missing, missing
+
+
+# -- and one assumption pointing the other way -----------------------------
+
+
+@pytest.mark.parametrize("text,want", [
+    ("The first sentence.\nThe second one.", "The first sentence. The second one."),
+    ("这是第一句。\n这是第二句。", "这是第一句。这是第二句。"),
+    ("これは一文目です。\nこれは二文目です。", "これは一文目です。これは二文目です。"),
+    ("第一句。\nAnd the second.", "第一句。And the second."),
+])
+def test_the_llm_newline_fold_follows_the_script(text, want):
+    """A space between two lines is a Latin convention.
+
+    normalise_boundaries has joined CJK lines tight since it was written —
+    full-width punctuation carries its own spacing — and the fold applied to
+    an LLM step's output did `re.sub(r"\\s*\\n+\\s*", " ", …)`, which put a
+    space after 。 on the way into the window. The same program, two
+    answers, and the one that was right ran first.
+    """
+    from omavoi.post.rules import normalise_boundaries
+
+    assert normalise_boundaries(text, newlines="space",
+                                add_punctuation=False) == want

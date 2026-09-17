@@ -227,7 +227,19 @@ class Pipeline:
         # newline typed into a chat window is the send key, which is how a
         # bilingual take ended up posting only its first line.
         if mode.joiner != "keep" and "\n" in final:
-            joined = re.sub(r"\s*\n+\s*", mode.joiner, final).strip()
+            if mode.joiner == " ":
+                # Script-aware, because a space is a Latin convention. Full-
+                # width punctuation carries its own spacing, so two CJK lines
+                # butt up and two Latin lines take a space — which is the
+                # rule normalise_boundaries already applies to the raw
+                # transcript, while this line put a space into
+                # 这是第一句。这是第二句。 on the way out of an LLM step.
+                # add_punctuation off: the model wrote whole sentences.
+                joined = post.normalise_boundaries(
+                    final, newlines="space", add_punctuation=False)
+            else:
+                # An explicit joiner is the one that was asked for.
+                joined = re.sub(r"\s*\n+\s*", mode.joiner, final).strip()
             if joined != final:
                 entry.setdefault("post", {}).setdefault("changes", []).append(
                     f"newlines folded with {mode.joiner!r}"

@@ -75,6 +75,15 @@ def _hotkey_report() -> dict[str, Any]:
         out["group_listed"] = out["group_held"] = False
 
     out["devices_problem"] = explain_missing(code, want)
+    # Which layout is loaded, so the caller can judge the one thing this
+    # program cannot: whether Right Alt is AltGr here. It is on German,
+    # French, Spanish, Polish and Nordic layouts among others, where it
+    # types characters — @ is AltGr+Q on a German keyboard — and holding it
+    # to dictate means those characters cannot be typed without starting a
+    # take. Reported rather than decided: the person typing on it knows, and
+    # a list of layouts here would be a guess that goes stale.
+    if want.upper() in ("RIGHTALT", "KEY_RIGHTALT"):
+        out["layout"] = _keyboard_layout()
 
     info = ipc.ping()
     if info is None:
@@ -96,6 +105,25 @@ def _hotkey_report() -> dict[str, Any]:
         out["matches"] = (bool(hk.get("enabled"))
                           and str(hk.get("key", "")) == want)
     return out
+
+
+def _keyboard_layout() -> str:
+    """The active xkb layout, or "" when nothing will say."""
+    import os
+    import subprocess
+
+    explicit = os.environ.get("XKB_DEFAULT_LAYOUT")
+    if explicit:
+        return explicit
+    try:
+        out = subprocess.run(["hyprctl", "getoption", "input:kb_layout"],
+                             capture_output=True, timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    for line in out.stdout.decode("utf-8", "replace").splitlines():
+        if line.startswith("str:"):
+            return line.split(":", 1)[1].strip()
+    return ""
 
 
 def cmd_hotkey(args: argparse.Namespace) -> int:
@@ -131,6 +159,10 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             print(f"{DIM}  omavoi hotkey capture   — press the key you want{RESET}")
             return 1
         line(True, f"{r['configured']} is a real evdev key (code {r['code']})")
+        if r.get("layout"):
+            print(f"{DIM}  Right Alt is AltGr on many non-US layouts, where it "
+                  f"types characters and cannot be held without that. "
+                  f"Yours is {r['layout']!r}.{RESET}")
         # The daemon is asked first, because the daemon is the thing that has
         # to work. Everything below this is about *this* process's access to
         # the devices, which is only ever evidence about the daemon's — and it
