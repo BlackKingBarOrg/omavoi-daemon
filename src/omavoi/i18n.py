@@ -44,6 +44,32 @@ DEFAULT_STEP_PROMPT = (
 
 # en -> {lang: text}
 _TABLE: dict[str, dict[str, str]] = {
+    "Twice the download, and it reports when it heard nothing.": {
+        _ZH: "下载量是两倍，但它会报告自己什么都没听到。",
+        _TH: "ดาวน์โหลดใหญ่เป็นสองเท่า แต่มันบอกได้ว่าไม่ได้ยินอะไรเลย",
+        _DE: "Doppelt so groß, dafür meldet es, wenn es nichts gehört hat.",
+        _FR: "Deux fois le téléchargement, et il signale quand il n'a rien entendu.",
+        _ES: "El doble de descarga, y avisa cuando no ha oído nada.",
+        _JA: "ダウンロードは倍ですが、何も聞こえなかったことを報告してくれます。",
+        _VI: "Tải về gấp đôi, bù lại nó báo khi không nghe thấy gì.",
+    },
+    ("The default: half the size and faster. Cannot tell silence from speech, "
+     "so a silent take may type a stock phrase."): {
+        _ZH: "默认：体积减半，速度更快。分不清静音和说话，所以一次静音的录音可能会打出一句套话。",
+        _TH: ("ค่าเริ่มต้น: เล็กลงครึ่งหนึ่งและเร็วกว่า แต่แยกความเงียบจากเสียงพูดไม่ได้ "
+              "การอัดที่เงียบจึงอาจพิมพ์วลีสำเร็จรูปออกมา"),
+        _DE: ("Die Vorgabe: halb so groß und schneller. Kann Stille nicht von Sprache unterscheiden, eine stille "
+              "Aufnahme tippt also womöglich einen Standardsatz."),
+        _FR: ("Le choix par défaut : moitié moins gros et plus rapide. Il ne "
+              "distingue pas le silence de la parole, une prise muette peut donc "
+              "écrire une phrase toute faite."),
+        _ES: ("El valor por defecto: la mitad de tamaño y más rápido. No distingue el silencio del habla, así que una "
+              "toma muda puede escribir una frase hecha."),
+        _JA: ("既定値：サイズは半分で、より高速。無音と発話を区別できないため、"
+              "無音の録音が決まり文句を打ち込むことがあります。"),
+        _VI: ("Mặc định: nhỏ bằng một nửa và nhanh hơn. Không phân biệt được im lặng với lời nói, nên một lần thu im "
+              "lặng có thể gõ ra một câu rập khuôn."),
+    },
     # The prompt a new LLM step starts with. Translated like everything else
     # here, but this one is not a label: it is sent to a model, and the last
     # sentence is what stops the model answering your dictation instead of
@@ -122,24 +148,6 @@ _TABLE: dict[str, dict[str, str]] = {
         _ES: "El mínimo utilizable.",
         _JA: "実用の下限です。",
         _VI: "Ngưỡng thấp nhất còn dùng được.",
-    },
-    "The default. Runs on any GPU through Vulkan.": {
-        _ZH: "默认选择。通过 Vulkan 可以跑在任何 GPU 上。",
-        _TH: "ค่าเริ่มต้น ทำงานบน GPU ใดก็ได้ผ่าน Vulkan",
-        _DE: "Die Vorgabe. Läuft über Vulkan auf jeder GPU.",
-        _FR: "Le choix par défaut. Tourne sur n'importe quel GPU via Vulkan.",
-        _ES: "La opción por defecto. Funciona en cualquier GPU mediante Vulkan.",
-        _JA: "既定の選択。Vulkan 経由でどの GPU でも動きます。",
-        _VI: "Mặc định. Chạy trên GPU nào cũng được thông qua Vulkan.",
-    },
-    "Faster, but poor at telling silence apart.": {
-        _ZH: "更快，但分辨静音的能力差。",
-        _TH: "เร็วกว่า แต่แยกความเงียบได้แย่",
-        _DE: "Schneller, unterscheidet Stille aber schlecht.",
-        _FR: "Plus rapide, mais mauvais pour distinguer le silence.",
-        _ES: "Más rápido, pero malo para distinguir el silencio.",
-        _JA: "より速いものの、無音の判別が苦手です。",
-        _VI: "Nhanh hơn, nhưng phân biệt khoảng lặng kém.",
     },
     "Quantised large-v3: a third of the VRAM, slightly less accurate.": {
         _ZH: "量化版 large-v3：显存只要三分之一，准确率略降。",

@@ -109,7 +109,10 @@ DEFAULTS: dict[str, Any] = {
         # library problems and a 2.2 GB install, for nothing anyone could
         # feel.
         "backend": "local-whispercpp",
-        "model": "ggml:large-v3",
+        # large-v3-turbo: half the download of large-v3 and faster, for one
+        # measured cost that models.py spells out — its no_speech_prob is
+        # always 0, so the silence check never fires.
+        "model": "ggml:large-v3-turbo",
         "language": "",
         "local_whispercpp": {
             "binary": "",

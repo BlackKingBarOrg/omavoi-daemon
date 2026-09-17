@@ -63,8 +63,8 @@ def test_the_engines_settings_block_is_dropped(home):
     ("medium", "ggml:medium"),
     ("large-v3", "ggml:large-v3"),
     ("large-v3-turbo", "ggml:large-v3-turbo"),
-    # large-v2 has no ggml build; the shipped default is the nearest large.
-    ("large-v2", "ggml:large-v3"),
+    # large-v2 has no ggml build, so it falls through to the shipped default.
+    ("large-v2", "ggml:large-v3-turbo"),
     # These two have no equivalent, and falling through to the 3 GB default
     # would hand someone who chose 75 MB a download they did not ask for.
     ("tiny", "ggml:base"),
@@ -100,7 +100,7 @@ def test_the_migration_runs_on_load(home):
                     encoding="utf-8")
     cfg = config.load()
     assert cfg["speech"]["backend"] == "local-whispercpp"
-    assert cfg["speech"]["model"] == "ggml:large-v3"
+    assert cfg["speech"]["model"] == "ggml:large-v3"   # a verbatim ggml name
     # And written back, or it happens again on every load and the file keeps
     # disagreeing with what is running.
     assert "local-whispercpp" in path.read_text(encoding="utf-8")

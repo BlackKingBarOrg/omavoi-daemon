@@ -56,9 +56,19 @@ CATALOG: tuple[ModelSpec, ...] = (
     ModelSpec("medium", GGML, _CPP, _HF_CPP, "ggml-medium.bin", 1463,
               "The floor of usable."),
     ModelSpec("large-v3", GGML, _CPP, _HF_CPP, "ggml-large-v3.bin", 2952,
-              "The default. Runs on any GPU through Vulkan.", ("recommended",)),
+              "Twice the download, and it reports when it heard nothing.",
+              ("accurate",)),
+    # The default. Half the size of large-v3 and faster, at one measured
+    # cost: a turbo model's no_speech_prob is 0 on every segment, so the
+    # check that drops a silent take before anything else runs is dead and
+    # the phrase list is the only guard left. Over 291 takes on this
+    # machine that let two stock hallucinations through — "谢谢大家!" and a
+    # subtitle credit — both on recordings below -58 dBFS, where the
+    # quietest take that carried real speech was -51.
     ModelSpec("large-v3-turbo", GGML, _CPP, _HF_CPP, "ggml-large-v3-turbo.bin", 1549,
-              "Faster, but poor at telling silence apart.", ("fast",)),
+              "The default: half the size and faster. Cannot tell silence "
+              "from speech, so a silent take may type a stock phrase.",
+              ("recommended", "fast")),
     ModelSpec("large-v3-q5_0", GGML, _CPP, _HF_CPP, "ggml-large-v3-q5_0.bin", 1031,
               "Quantised large-v3: a third of the VRAM, slightly less accurate.", ("quant",)),
     ModelSpec("large-v3-turbo-q5_0", GGML, _CPP, _HF_CPP,
