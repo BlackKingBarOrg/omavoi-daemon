@@ -151,3 +151,37 @@ def test_the_language_check_ignores_keys_that_are_not_languages(home):
     """It matches `modes.*.language` by suffix, so it must not catch more."""
     for key in ("ui.language", "speech.backend", "modes.default.inject"):
         assert settings._why_not_that_language(key, "chinese") == "", key
+
+
+# -- the model key reaches a shell -----------------------------------------
+
+
+def test_speech_model_must_be_in_the_catalogue(home):
+    """It is interpolated into the command `omavoi setup --run` shells out.
+
+    `mode set <m> speech_model` has checked this since it was written and
+    config.validate reports a bad one once per load — but `config set
+    speech.model` took anything, and setup builds
+    `omavoi model pull {key}` out of it for subprocess.call(shell=True).
+    """
+    assert settings._why_not_that_choice("speech.model", "x; echo pwned")
+    assert settings._why_not_that_choice("speech.model", "not-a-model")
+    assert settings._why_not_that_choice("speech.model", "ggml:large-v3") == ""
+    assert settings._why_not_that_choice("speech.model", "large-v3") == ""
+
+
+def test_the_setup_command_survives_a_hand_edited_config(home):
+    """Validation is the real fix; this is the one that holds when someone
+    writes the key straight into config.toml."""
+    import shlex
+
+    from omavoi import config, setup
+
+    cfg = config.load()
+    cfg["speech"]["model"] = "x; echo pwned"
+    pull = [s for s in setup.check(cfg).steps if s.key == "model"]
+    assert pull, "no model step"
+    command = pull[0].command
+    assert "; echo pwned" not in command.replace(shlex.quote("x; echo pwned"), ""), command
+    # The whole value must sit inside one shell word.
+    assert shlex.split(command) == ["omavoi", "model", "pull", "x; echo pwned"], command

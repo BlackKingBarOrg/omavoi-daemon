@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import grp
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass, field
@@ -204,7 +205,11 @@ def check(cfg: dict[str, Any]) -> Report:
     steps.append(Step(
         "model", f"Model weights ({key})", have,
         detail=str(models.local_path(key)) if have else f"not downloaded, {size}",
-        command=f"omavoi model pull {key}",
+        # Quoted because `omavoi setup --run` passes this to a shell, and
+        # the key is a config value. `config set speech.model` refuses
+        # anything outside the catalogue now, which is the real fix; this is
+        # the one that holds when a config file is edited by hand.
+        command=f"omavoi model pull {shlex.quote(key)}",
     ))
 
     # 3b. The LLM engine, but only when a mode actually reaches for a local

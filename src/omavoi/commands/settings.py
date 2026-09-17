@@ -44,6 +44,15 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
 
     if key == "speech.backend":
         return tuple(sorted(asr.BACKENDS)), "a speech engine"
+    if key == "speech.model":
+        # `mode set <m> speech_model` has checked this since it was written,
+        # and config.validate reports a bad one per load — but `config set
+        # speech.model` took anything, and that value is interpolated into
+        # the `omavoi model pull …` line that `omavoi setup --run` hands to a
+        # shell. A model key is not a place to accept arbitrary text.
+        from .. import models
+        return (tuple(m.key for m in models.CATALOG if m.kind == models.SPEECH),
+                "a speech model in the catalogue")
     if at("llm", "*", "backend"):
         return tuple(sorted(LLM_BACKENDS)), "an LLM backend"
     if key == "hotkey.mode":
