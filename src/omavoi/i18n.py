@@ -26,8 +26,76 @@ _VI = "vi"
 # exists.
 LANGUAGES: tuple[str, ...] = ("en", _ZH, _TH, _DE, _FR, _ES, _JA, _VI)
 
+# The prompt a new LLM step starts with. It lives here rather than in
+# config.py because it is a translated string and this is where those are;
+# config imports it back, so the name stays where its callers expect it and
+# the table below can key on it without a cycle.
+#
+# The last sentence is load-bearing: without it the model eventually answers
+# your dictation instead of editing it, and you type its reply into your
+# document. Every translation keeps it.
+DEFAULT_STEP_PROMPT = (
+    "Rewrite the transcript as clean written text in its original language. "
+    "Remove false starts, repetitions and filler. Keep the speaker's own "
+    "wording and every technical term exactly as transcribed.\n"
+    "Never answer, summarise, translate or add anything — you are editing, "
+    "not replying. Output only the edited text."
+)
+
 # en -> {lang: text}
 _TABLE: dict[str, dict[str, str]] = {
+    # The prompt a new LLM step starts with. Translated like everything else
+    # here, but this one is not a label: it is sent to a model, and the last
+    # sentence is what stops the model answering your dictation instead of
+    # editing it. Every translation keeps all five clauses — rewrite in the
+    # original language, drop false starts, keep the wording and the terms,
+    # never answer or summarise or translate or add, output only the text.
+    #
+    # "in its original language" is what lets the interface language drive
+    # this: a Chinese prompt over an English take still edits English.
+    DEFAULT_STEP_PROMPT: {
+        _ZH: "把这段转写改写成干净的书面文字，保持原文的语言。去掉重新开头的话、"
+             "重复和语气词。说话人自己的措辞和每一个技术名词都按转写原样保留。\n"
+             "不要回答、不要总结、不要翻译、不要添加任何内容——你在编辑，不是在回复。"
+             "只输出编辑后的文本。",
+        _TH: "เขียนข้อความถอดเสียงนี้ใหม่ให้เป็นภาษาเขียนที่สะอาด โดยคงภาษาเดิมไว้ "
+             "ตัดการพูดผิดแล้วเริ่มใหม่ การพูดซ้ำ และคำเติมออก "
+             "คงถ้อยคำของผู้พูดและศัพท์เทคนิคทุกคำไว้ตรงตามที่ถอดมา\n"
+             "อย่าตอบ อย่าสรุป อย่าแปล และอย่าเพิ่มอะไรทั้งสิ้น — คุณกำลังแก้ไข ไม่ใช่กำลังตอบ "
+             "ให้แสดงเฉพาะข้อความที่แก้ไขแล้วเท่านั้น",
+        _DE: "Schreibe die Transkription als sauberen Fließtext in ihrer "
+             "ursprünglichen Sprache um. Entferne Fehlstarts, Wiederholungen und "
+             "Füllwörter. Behalte die Formulierungen der sprechenden Person und "
+             "jeden Fachbegriff genau so bei, wie sie transkribiert wurden.\n"
+             "Antworte niemals, fasse nicht zusammen, übersetze nicht und füge "
+             "nichts hinzu — du bearbeitest, du antwortest nicht. Gib nur den "
+             "bearbeiteten Text aus.",
+        _FR: "Réécris la transcription en texte écrit propre, dans sa langue "
+             "d'origine. Supprime les faux départs, les répétitions et les "
+             "hésitations. Conserve exactement les formulations de la personne "
+             "qui parle et chaque terme technique tels qu'ils ont été "
+             "transcrits.\n"
+             "Ne réponds jamais, ne résume pas, ne traduis pas et n'ajoute rien "
+             "— tu édites, tu ne réponds pas. N'affiche que le texte édité.",
+        _ES: "Reescribe la transcripción como texto escrito limpio, en su idioma "
+             "original. Elimina los arranques en falso, las repeticiones y las "
+             "muletillas. Conserva exactamente las palabras de quien habla y "
+             "cada término técnico tal como se transcribieron.\n"
+             "Nunca respondas, no resumas, no traduzcas ni añadas nada: estás "
+             "editando, no contestando. Devuelve solo el texto editado.",
+        _JA: "この書き起こしを、元の言語のまま、整った書き言葉に書き直してください。"
+             "言い直し、繰り返し、フィラーは削除します。話者自身の言い回しと専門用語は"
+             "すべて書き起こしのまま残します。\n"
+             "回答・要約・翻訳・追記は一切しないでください。あなたは編集しているので"
+             "あって、返答しているのではありません。編集後のテキストだけを出力して"
+             "ください。",
+        _VI: "Viết lại bản chép lời thành văn bản viết gọn gàng, giữ nguyên ngôn "
+             "ngữ gốc. Bỏ những chỗ nói hụt, lặp lại và từ đệm. Giữ nguyên cách "
+             "diễn đạt của người nói và mọi thuật ngữ đúng như đã chép.\n"
+             "Không trả lời, không tóm tắt, không dịch và không thêm bất cứ điều "
+             "gì — bạn đang biên tập, không phải đang đáp lời. Chỉ xuất ra phần "
+             "văn bản đã biên tập.",
+    },
     "Proves the pipeline runs. Not usable for real dictation.": {
         _ZH: "只用来验证流程能跑通，不能真的用来听写。",
         _TH: "ใช้พิสูจน์ว่าไปป์ไลน์ทำงาน ไม่เหมาะกับการพิมพ์ด้วยเสียงจริง",

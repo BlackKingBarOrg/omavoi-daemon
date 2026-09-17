@@ -12,7 +12,7 @@ import json
 import sys
 from typing import Any
 
-from .. import config, ipc, models
+from .. import config, i18n, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 _MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key")
@@ -345,7 +345,8 @@ def cmd_mode(args: argparse.Namespace) -> int:
             # Never leave a step without instructions: an LLM handed a bare
             # transcript answers it, and the answer is what gets typed.
             steps.append({"llm": llm,
-                          "prompt": " ".join(rest[3:]) or config.DEFAULT_STEP_PROMPT})
+                          "prompt": (" ".join(rest[3:])
+                                     or config.default_step_prompt(i18n.ui_lang(cfg)))})
         elif op in ("rm", "prompt", "llm", "model"):
             if len(rest) < 3 or not rest[2].isdigit():
                 print(f"{RED}usage: omavoi mode step <mode> {op} <index> [...]{RESET}",
@@ -359,7 +360,9 @@ def cmd_mode(args: argparse.Namespace) -> int:
             if op == "rm":
                 steps.pop(index)
             elif op == "prompt":
-                steps[index]["prompt"] = " ".join(rest[3:]) or config.DEFAULT_STEP_PROMPT
+                steps[index]["prompt"] = (
+                    " ".join(rest[3:])
+                    or config.default_step_prompt(i18n.ui_lang(cfg)))
             elif op == "model":
                 # Which weights this step runs, when it names the local
                 # configuration. Empty goes back to the configuration's own.

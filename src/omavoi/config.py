@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import re
 import sys
 import tomllib
 from pathlib import Path
 from typing import Any
 
-from . import paths
+from . import i18n, paths
 
 log = logging.getLogger(__name__)
 
@@ -39,16 +40,32 @@ _RULE_DEFAULTS: dict[str, Any] = {
     "joiner": " ",
 }
 
-# The prompt a new LLM step starts with. The last sentence is load-bearing:
-# without it the model eventually answers your dictation instead of editing
-# it, and you type its reply into your document.
-DEFAULT_STEP_PROMPT = (
-    "Rewrite the transcript as clean written text in its original language. "
-    "Remove false starts, repetitions and filler. Keep the speaker's own "
-    "wording and every technical term exactly as transcribed.\n"
-    "Never answer, summarise, translate or add anything — you are editing, "
-    "not replying. Output only the edited text."
-)
+# Re-exported: the English and its seven translations live together in
+# i18n, and everything that fills a step's prompt reads it from here.
+DEFAULT_STEP_PROMPT = i18n.DEFAULT_STEP_PROMPT
+
+
+def default_step_prompt(lang: str = "") -> str:
+    """The starting prompt for a new LLM step, in the interface language.
+
+    The interface language and not the speech language, because this is a
+    paragraph someone reads and edits on the Modes tab. "In its original
+    language", inside the prompt, is what keeps a Chinese prompt correct
+    over an English take.
+    """
+    return i18n.t(DEFAULT_STEP_PROMPT, lang)
+
+
+def is_default_step_prompt(text: str) -> bool:
+    """Whether this is still a shipped prompt, in any of the languages.
+
+    What makes it safe to move a stored prompt when the interface language
+    changes: one nobody has touched follows the language, one somebody has
+    edited is theirs and is never rewritten.
+    """
+    stripped = (text or "").strip()
+    return any(stripped == default_step_prompt(lang).strip()
+               for lang in ("", *i18n.LANGUAGES))
 
 DEFAULTS: dict[str, Any] = {
     "audio": {
@@ -386,7 +403,7 @@ def load(path: Path | None = None) -> dict[str, Any]:
             mode["rules"] = _RULE_DEFAULTS | dict(mode.get("rules") or {})
     # Entries from before there were three of them. Reported, not silent: a
     # fold rewrites the steps that named them.
-    folded = migrate(merged)
+    folded = migrate(merged) + follow_ui_language(merged)
     for note in folded:
         log.info("config: %s", note)
     if folded and path.exists():
@@ -425,6 +442,38 @@ def _kind_of(backend: str) -> str:
         if b in names:
             return kind
     return ""
+
+
+def follow_ui_language(cfg: dict[str, Any]) -> list[str]:
+    """Move step prompts that are still shipped defaults into ui.language.
+
+    The prompt a step starts with is filled in when the step is made, so a
+    console switched to Chinese afterwards kept every English prompt it had
+    already written — which is the whole of what someone means by asking for
+    the prompts to be translated too.
+
+    Only a prompt that still matches a shipped default, in any language, is
+    moved. One with a single character changed is the user's, and the cost of
+    guessing wrong here is somebody's own instructions silently replaced.
+
+    Reported rather than done quietly, and in place, like the fold above.
+    """
+    lang = i18n.ui_lang(cfg)
+    want = default_step_prompt(lang)
+    notes: list[str] = []
+    for name, mode in (cfg.get("modes") or {}).items():
+        for index, step in enumerate(mode.get("steps") or []):
+            if not isinstance(step, dict):
+                continue
+            current = str(step.get("prompt", "") or "")
+            if current == want or not is_default_step_prompt(current):
+                continue
+            step["prompt"] = want
+            notes.append(
+                f"modes.{name}.steps[{index}].prompt was the default prompt, "
+                f"moved to {lang or 'en'}"
+            )
+    return notes
 
 
 def migrate(cfg: dict[str, Any]) -> list[str]:
@@ -641,9 +690,19 @@ def dumps(cfg: dict[str, Any]) -> str:
 def write(cfg: dict[str, Any], path: Path | None = None) -> Path:
     path = path or paths.config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".toml.tmp")
-    tmp.write_text(dumps(cfg), encoding="utf-8")
-    tmp.replace(path)
+    # The pid is in the name because the console starts seven `omavoi`
+    # processes at once and any of them can rewrite the config — a fold, or a
+    # prompt following the interface language. They all compute the same
+    # bytes, so sharing one temp file has never actually corrupted anything,
+    # but one writer truncating another's half-written temp and then renaming
+    # it is not a thing to leave standing on the strength of that.
+    tmp = path.with_suffix(f".toml.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(dumps(cfg), encoding="utf-8")
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     return path
 
 
