@@ -12,7 +12,7 @@ from __future__ import annotations
 import glob
 
 from omavoi.commands import keys
-from omavoi.hotkey import explain_missing, key_code
+from omavoi.hotkey import explain_missing, parse_chord
 
 
 def _report(monkeypatch, hotkey_block, **over):
@@ -52,7 +52,7 @@ def test_unreadable_devices_are_not_reported_as_absent():
     nodes = glob.glob("/dev/input/event*")
     if not nodes:
         return  # a machine with genuinely none; nothing to distinguish
-    why = explain_missing(key_code("RIGHTALT"), "RIGHTALT")
+    why = explain_missing(parse_chord("RIGHTALT"))
     assert "no input devices at all" not in why, (
         f"{len(nodes)} device nodes exist and the message denies it: {why!r}")
 

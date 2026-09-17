@@ -195,7 +195,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    from ..hotkey import find_devices, key_code
+    from ..hotkey import find_devices, parse_chord
 
     cfg = config.load()
     ok = True
@@ -231,7 +231,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         from ..hotkey import explain_missing
 
-        code = key_code(cfg["hotkey"]["key"])
+        chord = parse_chord(cfg["hotkey"]["key"])
         key = str(cfg["hotkey"]["key"])
 
         # The daemon first. This process opening a device says nothing about
@@ -251,7 +251,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             for name in bound:
                 print(f"    {DIM}{name}{RESET}")
         else:
-            devices = find_devices(code)
+            devices = find_devices(chord)
             # Not a guess. `id -nG` was the worst possible thing to point at
             # here: it reports the groups this session inherited, so someone
             # who ran usermod and did not log out sees `input` absent,
@@ -261,7 +261,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                   f"{len(devices)} device(s), but the daemon is reading none"
                   if devices
                   else f"{RED}nothing{RESET} — "
-                       + (explain_missing(code, key)
+                       + (explain_missing(chord)
                           or "no reason could be determined"))
             for dev in devices:
                 print(f"    {DIM}{dev.path}  {dev.name}{RESET}")

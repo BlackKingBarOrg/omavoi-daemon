@@ -28,18 +28,155 @@ class HotkeyUnavailable(RuntimeError):
     pass
 
 
-def key_code(name: str) -> int:
+# A bare modifier name means either side. Someone writing CTRL+SPACE wants
+# the chord to fire from whichever Ctrl is under their hand, and evdev has no
+# such thing as "Ctrl" — only KEY_LEFTCTRL and KEY_RIGHTCTRL. Writing
+# RIGHTCTRL+SPACE still pins it to one.
+_EITHER_SIDE = {
+    "CTRL": ("LEFTCTRL", "RIGHTCTRL"),
+    "CONTROL": ("LEFTCTRL", "RIGHTCTRL"),
+    "SHIFT": ("LEFTSHIFT", "RIGHTSHIFT"),
+    "ALT": ("LEFTALT", "RIGHTALT"),
+    "SUPER": ("LEFTMETA", "RIGHTMETA"),
+    "META": ("LEFTMETA", "RIGHTMETA"),
+    "WIN": ("LEFTMETA", "RIGHTMETA"),
+    "CMD": ("LEFTMETA", "RIGHTMETA"),
+}
+
+# Modifiers first and in a fixed order, so one chord has one spelling however
+# it was typed or captured: CTRL+SHIFT+SPACE, never SHIFT+CTRL+SPACE.
+_MODIFIER_ORDER = ("CTRL", "SHIFT", "ALT", "SUPER")
+_SIDED = {"LEFTCTRL": "CTRL", "RIGHTCTRL": "CTRL",
+          "LEFTSHIFT": "SHIFT", "RIGHTSHIFT": "SHIFT",
+          "LEFTALT": "ALT", "RIGHTALT": "ALT",
+          "LEFTMETA": "SUPER", "RIGHTMETA": "SUPER"}
+
+
+class Chord:
+    """One key, or several that have to be held together.
+
+    `parts` is one entry per named key, and each entry is every evdev code
+    that satisfies it — one code for RIGHTALT, two for a bare CTRL. The
+    chord is down when every part has at least one of its codes held, which
+    is what lets CTRL+SPACE fire from either Ctrl.
+
+    A single key is a chord of one, so nothing below has two shapes to
+    handle. That is the whole reason this type exists rather than a special
+    case beside the old `code: int`.
+    """
+
+    __slots__ = ("name", "parts")
+
+    def __init__(self, name: str, parts: tuple[tuple[int, ...], ...]) -> None:
+        self.name = name
+        self.parts = parts
+
+    @property
+    def codes(self) -> frozenset[int]:
+        """Everything worth watching for, across every part."""
+        return frozenset(code for part in self.parts for code in part)
+
+    @property
+    def is_combo(self) -> bool:
+        return len(self.parts) > 1
+
+    def satisfied_by(self, held: set[int]) -> bool:
+        return all(any(code in held for code in part) for part in self.parts)
+
+    def __repr__(self) -> str:
+        return f"Chord({self.name!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Chord) and other.name == self.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+
+def _one_code(name: str) -> int:
     from evdev import ecodes
 
-    name = name.strip().upper()
     for candidate in (name, f"KEY_{name}"):
         code = getattr(ecodes, candidate, None)
         if isinstance(code, int):
             return code
-    raise HotkeyUnavailable(f"unknown key name {name!r} (try RIGHTALT, F9, CAPSLOCK)")
+    raise HotkeyUnavailable(
+        f"unknown key name {name!r} (try RIGHTALT, F9, CAPSLOCK, "
+        f"or a combination like CTRL+SPACE)")
 
 
-def explain_missing(code: int, name: str, explicit: list[str] | None = None) -> str:
+def _key_name(code: int) -> str:
+    """`KEY_RIGHTALT` -> `RIGHTALT`, or "" for anything that is not a key."""
+    from evdev import ecodes
+
+    names = ecodes.KEY.get(code)
+    if isinstance(names, (list, tuple)):
+        names = next((n for n in names if str(n).startswith("KEY_")), names[0])
+    if not names or not str(names).startswith("KEY_"):
+        return ""
+    return str(names).replace("KEY_", "", 1)
+
+
+def canonical_name(names: list[str]) -> str:
+    """One spelling per chord: modifiers first, in a fixed order."""
+    mods, rest = [], []
+    for raw in names:
+        name = raw.strip().upper()
+        family = name if name in _EITHER_SIDE else _SIDED.get(name, "")
+        (mods if family else rest).append((family, name))
+    mods.sort(key=lambda pair: _MODIFIER_ORDER.index(pair[0]))
+    return "+".join(name for _, name in mods + rest)
+
+
+def parse_chord(spec: str) -> Chord:
+    """`RIGHTALT`, `CTRL+SPACE`, `SUPER+SHIFT+V` — one key or several."""
+    names = [part.strip().upper() for part in str(spec).split("+") if part.strip()]
+    if not names:
+        raise HotkeyUnavailable("no key configured")
+    if len(names) != len(set(names)):
+        raise HotkeyUnavailable(f"{spec!r} names the same key twice")
+    # Built in the canonical order, so `parts` and `name` describe the same
+    # chord in the same sequence. Nothing indexes parts today; a name that
+    # says CTRL+SPACE over parts that start with SPACE is the kind of thing
+    # that is true until something does.
+    canonical = canonical_name(names)
+    parts = tuple(
+        tuple(_one_code(side) for side in _EITHER_SIDE[name])
+        if name in _EITHER_SIDE else (_one_code(name),)
+        for name in canonical.split("+")
+    )
+    return Chord(canonical, parts)
+
+
+def key_code(name: str) -> int:
+    """The single code for a single key. Raises on a combination.
+
+    Kept for the two places that genuinely want one code and cannot mean a
+    chord; everything about the hotkey itself goes through parse_chord.
+    """
+    chord = parse_chord(name)
+    if chord.is_combo or len(chord.parts[0]) != 1:
+        raise HotkeyUnavailable(f"{name!r} is a combination, not a single key")
+    return chord.parts[0][0]
+
+
+def explain_missing(chord: Chord, explicit: list[str] | None = None) -> str:
+    """Why this chord cannot be read, naming the part that cannot.
+
+    A combination is only as readable as its least readable key, and saying
+    "CTRL+SPACE cannot be read" when every keyboard has Ctrl and none has
+    been asked about Space is the same shape as the group message this
+    function was written to replace.
+    """
+    for part, name in zip(chord.parts, chord.name.split("+"), strict=True):
+        why = _explain_one(part, name, explicit)
+        if why:
+            return why if not chord.is_combo else f"{name}: {why}"
+    return ""
+
+
+def _explain_one(codes: tuple[int, ...], name: str,
+                 explicit: list[str] | None = None) -> str:
     """Why no device can emit this key, in the words of the actual cause.
 
     find_devices swallows a failed open with a bare `continue`, so three
@@ -75,7 +212,8 @@ def explain_missing(code: int, name: str, explicit: list[str] | None = None) -> 
         except OSError:
             continue
         try:
-            if code in dev.capabilities().get(ecodes.EV_KEY, []):
+            emits = dev.capabilities().get(ecodes.EV_KEY, [])
+            if any(code in emits for code in codes):
                 return ""          # it is there after all
             opened.append(dev.name)
         finally:
@@ -103,10 +241,17 @@ def explain_missing(code: int, name: str, explicit: list[str] | None = None) -> 
     return f"no readable device emits {name}"
 
 
-def find_devices(code: int, explicit: list[str] | None = None) -> list[Any]:
-    """Every readable device that can emit this key."""
+def find_devices(chord: Chord, explicit: list[str] | None = None) -> list[Any]:
+    """Every readable device that can emit any part of this chord.
+
+    Any, not all: a chord is usually one keyboard, but the modifier and the
+    key can sit on different devices — a foot pedal, a macro pad — and the
+    listener tracks what is held across all of them anyway. Watching only
+    devices that carry the whole chord would silently drop that.
+    """
     from evdev import InputDevice, ecodes, list_devices
 
+    wanted = chord.codes
     paths = explicit or list_devices()
     found = []
     for path in paths:
@@ -114,7 +259,7 @@ def find_devices(code: int, explicit: list[str] | None = None) -> list[Any]:
             dev = InputDevice(path)
         except (OSError, PermissionError):
             continue
-        if code in dev.capabilities().get(ecodes.EV_KEY, []):
+        if wanted & set(dev.capabilities().get(ecodes.EV_KEY, [])):
             found.append(dev)
         else:
             dev.close()
@@ -122,9 +267,13 @@ def find_devices(code: int, explicit: list[str] | None = None) -> list[Any]:
 
 
 def capture(timeout: float = 10.0, explicit: list[str] | None = None) -> str:
-    """Wait for one key press and return its evdev name, or "" on timeout.
+    """Wait for a key press and return what was held, or "" on timeout.
 
-    Reading, never grabbing: the key you press still reaches whatever has
+    A chord, not a key: it collects what goes down and returns the whole set
+    at the moment the first key comes back up. Pressing one key returns one
+    name, which is what this did before and what most people will do.
+
+    Reading, never grabbing: the keys you press still reach whatever has
     focus. That is the same choice the listener makes, and it is why the keys
     worth binding are the ones that do nothing on their own.
     """
@@ -150,26 +299,31 @@ def capture(timeout: float = 10.0, explicit: list[str] | None = None) -> str:
 
     by_fd = {dev.fd: dev for dev in devices}
     deadline = time.monotonic() + timeout
+    held: list[str] = []          # in the order pressed, deduplicated
     try:
         while time.monotonic() < deadline:
             ready, _, _ = select.select(list(by_fd), [], [],
                                         max(0.0, deadline - time.monotonic()))
             for fd in ready:
                 for event in by_fd[fd].read():
-                    if event.type != ecodes.EV_KEY or event.value != 1:
+                    if event.type != ecodes.EV_KEY:
                         continue
+                    name = _key_name(event.code)
                     # Keyboard keys only. A mouse reports its buttons as
                     # EV_KEY too, so the first capture picked up a stray
-                    # left-click — and a button is not something the config's
-                    # key_code() can resolve anyway.
-                    names = ecodes.KEY.get(event.code)
-                    if isinstance(names, (list, tuple)):
-                        names = next((n for n in names
-                                      if str(n).startswith("KEY_")), names[0])
-                    if not names or not str(names).startswith("KEY_"):
+                    # left-click — and a button is not something parse_chord
+                    # can resolve anyway.
+                    if not name:
                         continue
-                    # KEY_RIGHTALT -> RIGHTALT, which is what the config takes.
-                    return str(names).replace("KEY_", "", 1)
+                    if event.value == _KEY_DOWN:
+                        if name not in held:
+                            held.append(name)
+                    elif event.value == _KEY_UP and held:
+                        # The first release ends it: everything down at that
+                        # moment is the chord. Waiting for all of them to
+                        # come up would let a slow finger add a key that was
+                        # never meant to be part of it.
+                        return canonical_name(held)
         return ""
     finally:
         for dev in devices:
@@ -192,8 +346,12 @@ class HotkeyListener:
         on_availability: Callable[[bool, str], None] | None = None,
     ) -> None:
         hk = cfg["hotkey"]
-        self.key_name: str = hk["key"]
-        self.code = key_code(self.key_name)
+        self.chord = parse_chord(hk["key"])
+        # The canonical spelling, which is what everything downstream reports
+        # and compares against — `hotkey check` asks whether the daemon is
+        # bound to the configured key, and "ctrl+space" and "CTRL+SPACE" are
+        # the same binding.
+        self.key_name: str = self.chord.name
         self.mode: str = hk.get("mode", "push_to_talk")
         self.explicit: list[str] = list(hk.get("devices", []) or [])
         self.rescan_seconds = float(hk.get("rescan_seconds", 5.0))
@@ -206,6 +364,11 @@ class HotkeyListener:
         self._running = threading.Event()
         self._thread: threading.Thread | None = None
         self._devices: list[Any] = []
+        # Which of the chord's keys are down, and whether the whole chord was
+        # satisfied on the last event. One bool was enough for one key; a
+        # combination has to know which parts are held to know when the
+        # chord stops being held.
+        self._down: set[int] = set()
         self._held = False
         # True once every device is gone, so each transition is said once
         # rather than every half second.
@@ -216,12 +379,11 @@ class HotkeyListener:
         return [f"{d.path} {d.name}" for d in self._devices]
 
     def start(self) -> None:
-        devices = find_devices(self.code, self.explicit or None)
+        devices = find_devices(self.chord, self.explicit or None)
         if not devices:
             raise HotkeyUnavailable(
                 f"{self.key_name} cannot be read: "
-                + (explain_missing(self.code, self.key_name,
-                                   self.explicit or None)
+                + (explain_missing(self.chord, self.explicit or None)
                    or "the devices changed while binding; try again")
             )
         self._devices = devices
@@ -255,8 +417,9 @@ class HotkeyListener:
                     dev = key.fileobj
                     try:
                         for event in dev.read():  # type: ignore[union-attr]
-                            if event.type == ecodes.EV_KEY and event.code == self.code:
-                                self._handle(event.value)
+                            if (event.type == ecodes.EV_KEY
+                                    and event.code in self.chord.codes):
+                                self._handle(event.code, event.value)
                     except OSError:
                         # Keyboard unplugged or re-enumerated.
                         log.warning("input device went away: %s", getattr(dev, "path", dev))
@@ -264,6 +427,9 @@ class HotkeyListener:
                         if dev in self._devices:
                             self._devices.remove(dev)  # type: ignore[arg-type]
                         if self._held:
+                            # A key cannot be released by a keyboard that is
+                            # gone, so the chord is broken by definition.
+                            self._down.clear()
                             self._held = False
                             self._safe(self._on_release)
                         # Losing the last device is a dead hotkey that looks
@@ -294,7 +460,7 @@ class HotkeyListener:
     def _rescan(self, sel: selectors.BaseSelector) -> None:
         """Pick up a keyboard that was plugged in after we started."""
         known = {d.path for d in self._devices}
-        for dev in find_devices(self.code, self.explicit or None):
+        for dev in find_devices(self.chord, self.explicit or None):
             if dev.path in known:
                 dev.close()
                 continue
@@ -315,19 +481,30 @@ class HotkeyListener:
         except Exception:
             log.exception("hotkey availability callback error")
 
-    def _handle(self, value: int) -> None:
+    def _handle(self, code: int, value: int) -> None:
+        # _KEY_HOLD (autorepeat) is not a new press and changes nothing about
+        # what is down.
+        if value == _KEY_DOWN:
+            self._down.add(code)
+        elif value == _KEY_UP:
+            self._down.discard(code)
+        else:
+            return
+
+        was, now = self._held, self.chord.satisfied_by(self._down)
+        if was == now:
+            return
+        self._held = now
+
         if self.mode == "toggle":
-            if value == _KEY_DOWN:
+            # The edge into the chord only: releasing must not toggle a
+            # second time, and a combination has as many release edges as it
+            # has keys.
+            if now:
                 self._safe(self._on_toggle)
             return
 
-        if value == _KEY_DOWN and not self._held:
-            self._held = True
-            self._safe(self._on_press)
-        elif value == _KEY_UP and self._held:
-            self._held = False
-            self._safe(self._on_release)
-        # _KEY_HOLD (autorepeat) is ignored — it is not a new press.
+        self._safe(self._on_press if now else self._on_release)
 
     @staticmethod
     def _safe(fn: Callable[[], None]) -> None:

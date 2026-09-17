@@ -113,7 +113,21 @@ went. "It dropped a word again" becomes "segment 3 came back at avg_logprob
 ## The input group
 
 The key is read from evdev, below xkb, so the physical key is the same one
-whatever your layout says. That is also why it needs the `input` group:
+whatever your layout says.
+
+It can be a combination: `omavoi config set hotkey.key CTRL+SPACE`, or hold
+one while the console's **Press a key** is waiting. A bare `CTRL`, `SHIFT`,
+`ALT` or `SUPER` means either side; `RIGHTCTRL` pins it to one. In
+push-to-talk the take starts when the last key goes down and ends when any
+of them comes up — releasing Space while still holding Ctrl ends it, because
+Space is the one you think of as the button.
+
+A single key is still a single key, and is what the shipped default is.
+Right Alt is AltGr on most non-US layouts, where holding it means you cannot
+type the characters it produces; that is what a combination avoids without
+giving up a key.
+
+The `input` group is needed either way:
 `/dev/input/event*` is `crw-rw---- root input`, and for keyboards group
 membership is the only path — the udev `uaccess` seat ACL applies to
 `ID_INPUT_JOYSTICK` and nothing else here.
@@ -196,7 +210,7 @@ omavoi config get|set|edit|show
 omavoi transcribe FILE [--mode M]
 
 omavoi hotkey check           why the key is not working, if it is not
-omavoi hotkey capture         name the key you press (asks the daemon to read it)
+omavoi hotkey capture         name the key or combination you press
 omavoi llm list|check         the three LLM configurations, and whether one answers
 omavoi speech show|check      the remote speech endpoint, and whether it answers
 omavoi secrets set NAME       a key, read from stdin — never from argv

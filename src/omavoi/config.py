@@ -470,7 +470,8 @@ def load(path: Path | None = None) -> dict[str, Any]:
             mode["rules"] = _RULE_DEFAULTS | dict(mode.get("rules") or {})
     # Entries from before there were three of them. Reported, not silent: a
     # fold rewrites the steps that named them.
-    folded = migrate(merged) + retire_cuda_engine(merged) + follow_ui_language(merged)
+    folded = (migrate(merged) + retire_cuda_engine(merged)
+              + normalise_hotkey(merged) + follow_ui_language(merged))
     for note in folded:
         log.info("config: %s", note)
     if folded and path.exists():
@@ -560,6 +561,36 @@ def retire_cuda_engine(cfg: dict[str, Any]) -> list[str]:
         notes.append(f"speech.model {want!r} names nothing in the catalogue, "
                      f"now {speech['model']!r}")
     return notes
+
+
+def normalise_hotkey(cfg: dict[str, Any]) -> list[str]:
+    """Write the hotkey the way everything else spells it.
+
+    A combination can be typed in any order and any case — `super+v`,
+    `shift+ctrl+space` — and the listener canonicalises it internally, so
+    both work. But then `config get` shows what you typed while `hotkey
+    check` and the daemon both report CTRL+SHIFT+SPACE, and the one
+    comparison that matters — has the daemon picked up the change — is
+    between two spellings of the same thing.
+
+    A name that resolves to nothing is uppercased like any other and left
+    alone otherwise; validate() is what reports that it is not a key.
+    """
+    # canonical_name and not parse_chord: this runs on every config.load, and
+    # parse_chord resolves the names to evdev codes, which costs 25 ms of
+    # importing evdev on every command — the exact regression the startup
+    # test exists to catch, and did. The spelling needs no codes: it is the
+    # modifier order and the case.
+    from .hotkey import canonical_name
+
+    want = str((cfg.get("hotkey") or {}).get("key", "") or "")
+    if not want:
+        return []
+    canonical = canonical_name(want.split("+"))
+    if canonical == want:
+        return []
+    cfg["hotkey"]["key"] = canonical
+    return [f"hotkey.key {want!r} written as {canonical!r}"]
 
 
 def follow_ui_language(cfg: dict[str, Any]) -> list[str]:
@@ -672,10 +703,10 @@ def validate(cfg: dict[str, Any]) -> list[str]:
     # diagnose exactly this, and `config set hotkey.key` refuses a bad name
     # outright, so a wrong one can now only arrive by hand-editing the file.
     if key and "evdev" in sys.modules:
-        from .hotkey import HotkeyUnavailable, key_code
+        from .hotkey import HotkeyUnavailable, parse_chord
 
         try:
-            key_code(key)
+            parse_chord(key)
         except HotkeyUnavailable as exc:
             problems.append(f"hotkey.key={key!r} is not an evdev key ({exc})")
     if cfg["audio"]["rate"] != 16000:

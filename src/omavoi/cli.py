@@ -85,7 +85,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="switch even to a backend that is not installed here")
     p.set_defaults(func=cmd_model)
 
-    p = sub.add_parser("hotkey", help="choose the push-to-talk key by pressing it")
+    p = sub.add_parser(
+        "hotkey",
+        help="choose the push-to-talk key, or combination, by pressing it")
     p.add_argument("action", choices=["capture", "check"])
     p.add_argument("--timeout", type=float, default=10.0)
     p.add_argument("--json", action="store_true")

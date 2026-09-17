@@ -24,10 +24,10 @@ def _why_not_that_hotkey(key: str, value: str) -> str:
     """
     if str(key) != "hotkey.key" or not str(value).strip():
         return ""
-    from ..hotkey import HotkeyUnavailable, key_code
+    from ..hotkey import HotkeyUnavailable, parse_chord
 
     try:
-        key_code(value)
+        parse_chord(value)
     except HotkeyUnavailable as exc:
         return str(exc)
     except ModuleNotFoundError:
@@ -46,7 +46,7 @@ def _hotkey_report() -> dict[str, Any]:
     import os
 
     from .. import ipc
-    from ..hotkey import HotkeyUnavailable, explain_missing, key_code
+    from ..hotkey import HotkeyUnavailable, explain_missing, parse_chord
 
     cfg = config.load()
     want = str(cfg["hotkey"].get("key", ""))
@@ -55,8 +55,12 @@ def _hotkey_report() -> dict[str, Any]:
                            "enabled": bool(cfg["hotkey"].get("enabled", True))}
 
     try:
-        code = key_code(want)
-        out["code"] = code
+        chord = parse_chord(want)
+        # The canonical spelling, so a config that says "ctrl+space" and a
+        # daemon bound to CTRL+SPACE are not reported as disagreeing.
+        out["configured"] = chord.name
+        out["code"] = chord.parts[0][0] if not chord.is_combo else 0
+        out["combo"] = chord.is_combo
         out["name_ok"] = True
     except HotkeyUnavailable as exc:
         out["name_ok"] = False
@@ -74,7 +78,7 @@ def _hotkey_report() -> dict[str, Any]:
     except KeyError:
         out["group_listed"] = out["group_held"] = False
 
-    out["devices_problem"] = explain_missing(code, want)
+    out["devices_problem"] = explain_missing(chord)
     # Which layout is loaded, so the caller can judge the one thing this
     # program cannot: whether Right Alt is AltGr here. It is on German,
     # French, Spanish, Polish and Nordic layouts among others, where it
@@ -158,7 +162,9 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
             line(False, r.get("problem", "the key name is not an evdev key"))
             print(f"{DIM}  omavoi hotkey capture   — press the key you want{RESET}")
             return 1
-        line(True, f"{r['configured']} is a real evdev key (code {r['code']})")
+        line(True, f"{r['configured']} is "
+                   + ("a real combination of evdev keys" if r.get("combo")
+                      else f"a real evdev key (code {r['code']})"))
         if r.get("layout"):
             print(f"{DIM}  Right Alt is AltGr on many non-US layouts, where it "
                   f"types characters and cannot be held without that. "
