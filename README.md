@@ -45,17 +45,30 @@ If you would rather do it by hand, or you only want the daemon and no desktop
 pieces:
 
 ```bash
-# 1. the speech engine (Vulkan runs on NVIDIA, AMD and Intel alike)
-sudo pacman -S --needed whisper-cpp ggml ggml-vulkan
+# 1. the speech engine, the typing tools, and llama.cpp for modes with an LLM
+#    step (Vulkan runs on NVIDIA, AMD and Intel alike)
+sudo pacman -S --needed whisper-cpp ggml ggml-vulkan llama-cpp \
+                        pipewire wtype wl-clipboard xdotool
 
 # 2. the daemon. `omavoi` is not on PyPI; install it from this repository
 uv tool install git+https://github.com/BlackKingBarOrg/omavoi
 
-# 3. weights, and whatever is still missing
+# 3. weights, and whatever is still missing. It lists every remaining step
+#    with the command for each; --run does the next one that needs no root
 omavoi setup
 
-# 4. the systemd user unit, which ships with the plugin, not with the package
+# 4. the systemd user unit. It ships with the plugin rather than with this
+#    package, so a daemon-only install fetches just the unit
+curl -fsSL --create-dirs -o ~/.config/systemd/user/omavoid.service \
+  https://raw.githubusercontent.com/BlackKingBarOrg/omavoi-shell-plugin/master/omavoid.service
+systemctl --user daemon-reload
+systemctl --user enable --now omavoid.service
 ```
+
+Step 4 used to be a comment with no command under it, and `omavoi setup` sent
+you to `systemctl --user enable --now omavoid.service` either way — which
+answers `Unit omavoid.service does not exist` when the plugin is not
+installed, which is exactly the case this path is written for.
 
 `ggml` carries the CPU backend, and whisper asks for a CPU device for the
 tensors it does not offload — with only the GPU plugin loaded it aborts

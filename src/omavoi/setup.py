@@ -281,11 +281,33 @@ def check(cfg: dict[str, Any]) -> Report:
         ))
 
     # 5. Run it at login.
+    #
+    # The unit ships with the plugin rather than with this package, so someone
+    # who installed the daemon by hand has nothing to enable — and this step
+    # used to hand them `systemctl --user enable --now omavoid.service`
+    # regardless, which answers "Unit omavoid.service does not exist". That is
+    # the last step of the manual install, and the manual install exists for
+    # people who want the daemon and none of the desktop pieces.
+    have_unit = os.path.exists(os.path.join(
+        os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+        "systemd", "user", "omavoid.service"))
     steps.append(Step(
         "service", "Start at login", _unit_active(),
-        detail="omavoid.service is enabled" if _unit_active() else "not enabled",
-        command="systemctl --user enable --now omavoid.service",
+        detail=("omavoid.service is enabled" if _unit_active()
+                else "not enabled" if have_unit
+                else "no unit file yet"),
+        command=(
+            "systemctl --user enable --now omavoid.service" if have_unit else
+            "curl -fsSL -o ~/.config/systemd/user/omavoid.service --create-dirs "
+            "https://raw.githubusercontent.com/BlackKingBarOrg/"
+            "omavoi-shell-plugin/master/omavoid.service"
+            " && systemctl --user daemon-reload"
+            " && systemctl --user enable --now omavoid.service"
+        ),
         optional=True,
+        note=("" if have_unit else
+              "The unit ships with the plugin, which installs it for you. "
+              "This fetches just the unit, for a daemon-only install."),
     ))
     return Report(steps)
 

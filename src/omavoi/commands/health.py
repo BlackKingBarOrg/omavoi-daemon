@@ -183,11 +183,21 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     nxt = report.blocking[0]
     if args.run:
-        if nxt.needs_root:
-            print(f"{YELLOW}This step needs root; run it yourself:{RESET}\n  {nxt.command}")
+        # The first step this can actually do, not the first step there is.
+        # It used to take blocking[0] and refuse when that needed root, one
+        # line under its own offer to "do the next step that does not need
+        # root" — so on a machine whose next step was a pacman line, --run
+        # printed a refusal and exited 1 while a downloadable step sat behind
+        # it, and the advice and the behaviour disagreed on the same screen.
+        doable = next((s for s in report.blocking if not s.needs_root), None)
+        if doable is None:
+            print(f"{YELLOW}Every remaining step needs root; run them "
+                  f"yourself:{RESET}")
+            for step in report.blocking:
+                print(f"  {step.command}")
             return 1
-        print(f"{BOLD}Running:{RESET} {nxt.command}")
-        return subprocess.call(nxt.command, shell=True)
+        print(f"{BOLD}Running:{RESET} {doable.command}")
+        return subprocess.call(doable.command, shell=True)
 
     print(f"Next: {BOLD}{nxt.title}{RESET}")
     print(f"{DIM}Run `omavoi setup --run` to do the next step that does not need root.{RESET}")
