@@ -320,3 +320,141 @@ def test_what_counts_as_naming_a_character(name, looks):
     from omavoi.commands.keys import _looks_like_a_character
 
     assert _looks_like_a_character(name) is looks
+
+
+# -- capture, which is the only way to set this from the console -----------
+
+
+class _FakeEvent:
+    def __init__(self, code, value):
+        from evdev import ecodes
+
+        self.type = ecodes.EV_KEY
+        self.code = code
+        self.value = value
+
+
+class _FakeDevice:
+    """One device that hands out a scripted burst of events."""
+
+    fd = 99
+
+    def __init__(self, bursts):
+        from evdev import ecodes
+
+        self._bursts = list(bursts)
+        self._caps = {ecodes.EV_KEY: list(range(256))}
+
+    def capabilities(self):
+        return self._caps
+
+    def read(self):
+        return self._bursts.pop(0) if self._bursts else []
+
+    def close(self):
+        pass
+
+
+def _capture_with(monkeypatch, script, timeout=5.0):
+    """Run capture() against a scripted key sequence."""
+    import select
+
+    from omavoi import hotkey
+
+    device = _FakeDevice(script)
+    monkeypatch.setattr(hotkey, "time", hotkey.time)
+    monkeypatch.setattr("evdev.InputDevice", lambda path: device)
+    monkeypatch.setattr("evdev.list_devices", lambda: ["/dev/input/event0"])
+    monkeypatch.setattr(select, "select",
+                        lambda r, w, x, t=None: ([device.fd], [], []))
+    return hotkey.capture(timeout)
+
+
+def test_capture_returns_a_single_key_as_one_name(home, monkeypatch):
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_RIGHTALT, 1)],
+        [_FakeEvent(ecodes.KEY_RIGHTALT, 0)],
+    ])
+    assert got == "RIGHTALT"
+
+
+def test_capture_returns_a_held_combination(home, monkeypatch):
+    """This is the console's only way to set the hotkey: hold it while the
+    button is waiting."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_LEFTCTRL, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 0)],
+    ])
+    assert got == "CTRL+SLASH"
+
+
+def test_capture_orders_what_it_caught(home, monkeypatch):
+    """Pressed slash-then-ctrl, stored CTRL+SLASH, so the config and the
+    daemon agree however the fingers landed."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_SLASH, 1)],
+        [_FakeEvent(ecodes.KEY_LEFTCTRL, 1)],
+        [_FakeEvent(ecodes.KEY_LEFTCTRL, 0)],
+    ])
+    assert got == "CTRL+SLASH"
+
+
+def test_capture_ends_on_the_first_release(home, monkeypatch):
+    """Waiting for every key to come up would let a slow finger add one that
+    was never meant to be in the chord."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_LEFTCTRL, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 0)],
+        [_FakeEvent(ecodes.KEY_LEFTSHIFT, 1)],   # too late to join
+    ])
+    assert got == "CTRL+SLASH"
+
+
+def test_capture_ignores_a_mouse_button(home, monkeypatch):
+    """A mouse reports its buttons as EV_KEY too, and the first capture this
+    program ever did picked up a stray left-click."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.BTN_LEFT, 1)],
+        [_FakeEvent(ecodes.BTN_LEFT, 0)],
+        [_FakeEvent(ecodes.KEY_F9, 1)],
+        [_FakeEvent(ecodes.KEY_F9, 0)],
+    ])
+    assert got == "F9"
+
+
+def test_a_lone_modifier_captured_stays_on_its_side(home, monkeypatch):
+    """The shipped hotkey is RIGHTCTRL, and someone who binds a bare
+    modifier picked that one because the other is in constant use for
+    shortcuts. Widening it would start a recording on every Ctrl-C."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_RIGHTCTRL, 1)],
+        [_FakeEvent(ecodes.KEY_RIGHTCTRL, 0)],
+    ])
+    assert got == "RIGHTCTRL"
+
+
+def test_a_modifier_in_a_chord_is_widened_to_either_side(home, monkeypatch):
+    """evdev reports the physical key, so this captured LEFTCTRL+SLASH — a
+    binding that works with one hand and not the other."""
+    from evdev import ecodes
+
+    got = _capture_with(monkeypatch, [
+        [_FakeEvent(ecodes.KEY_RIGHTCTRL, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 1)],
+        [_FakeEvent(ecodes.KEY_SLASH, 0)],
+    ])
+    assert got == "CTRL+SLASH", "right Ctrl and left Ctrl capture the same"

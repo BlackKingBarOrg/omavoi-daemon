@@ -105,6 +105,25 @@ def _one_code(name: str) -> int:
         f"or a combination like CTRL+SPACE)")
 
 
+def _generalise(names: list[str]) -> list[str]:
+    """A modifier inside a chord means either side; alone it does not.
+
+    evdev reports the physical key, so pressing Ctrl and slash captures
+    LEFTCTRL+SLASH — a binding that works with one hand and not the other,
+    which nobody pressing "Ctrl and slash" was asking for. Inside a chord
+    the modifier is just "the Ctrl key", so it is widened.
+
+    Alone it is not. The shipped hotkey is RIGHTCTRL, and someone who binds
+    a bare modifier has picked *that* key precisely because the other one is
+    in constant use for shortcuts — widening it would start a recording
+    every time they pressed Ctrl-C. Writing RIGHTCTRL+SLASH by hand still
+    pins a chord to one side.
+    """
+    if len(names) < 2:
+        return names
+    return [_SIDED.get(name, name) for name in names]
+
+
 def _key_name(code: int) -> str:
     """`KEY_RIGHTALT` -> `RIGHTALT`, or "" for anything that is not a key."""
     from evdev import ecodes
@@ -357,7 +376,7 @@ def capture(timeout: float = 10.0, explicit: list[str] | None = None) -> str:
                         # moment is the chord. Waiting for all of them to
                         # come up would let a slow finger add a key that was
                         # never meant to be part of it.
-                        return canonical_name(held)
+                        return canonical_name(_generalise(held))
         return ""
     finally:
         for dev in devices:
