@@ -119,3 +119,25 @@ def test_a_filler_list_holds_nothing_that_is_a_word():
         text = f"the {filler} word stays"
         out = strip_fillers(text, [], spaced)
         assert "word stays" in out, f"{filler!r} ate the sentence: {out!r}"
+
+
+def test_every_model_says_which_languages_it_is_for():
+    """The field was on every entry from the start and empty on all seven
+    speech models — and displayed nowhere, for either family.
+
+    It matters most for the thing it would have said: the default speech
+    model is a distillation and is not even across languages.
+    """
+    for entry in models.CATALOG:
+        assert entry.languages, f"{entry.key} does not say"
+
+
+def test_the_payload_carries_it():
+    """Populating a field nobody reads would have been the same as leaving
+    it empty."""
+    import inspect
+
+    from omavoi.commands import catalogue
+
+    src = inspect.getsource(catalogue.cmd_model)
+    assert '"languages": spec.languages' in src, "the console cannot see it"

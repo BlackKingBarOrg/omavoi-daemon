@@ -179,6 +179,12 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "active": (spec.key in llm_chosen
                                if spec.kind == models.LLM
                                else spec.key == active),
+                    # Which languages this one is any good at. The field has
+                    # been on every entry since the catalogue was written and
+                    # reached no user — which mattered most for the thing it
+                    # would have said: the default speech model is a
+                    # distillation and is not even across languages.
+                    "languages": spec.languages,
                     "running": _is_running(spec),
                 })
             from .. import gpu, secrets
@@ -290,6 +296,8 @@ def cmd_model(args: argparse.Namespace) -> int:
                 state = f"{GREEN}local{RESET}" if here else f"{DIM}remote{RESET}"
                 tag = f" {YELLOW}[recommended]{RESET}" if "recommended" in spec.tags else ""
                 print(f"{mark} {spec.key:<24}{spec.size_mb / 1024:>6.1f}G  {state:<18}{spec.note}{tag}")
+                if spec.languages:
+                    print(f"  {'':<24}{'':>6}  {DIM}{spec.languages}{RESET}")
         print(f"\n{DIM}* = in use   . = downloaded   stored in {models.model_root()}{RESET}")
         return 0
 

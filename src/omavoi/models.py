@@ -50,14 +50,18 @@ _HF_CPP = "ggerganov/whisper.cpp"
 CATALOG: tuple[ModelSpec, ...] = (
     # -- whisper.cpp / ggml (Vulkan, any GPU) --------------------------------
     ModelSpec("base", GGML, _CPP, _HF_CPP, "ggml-base.bin", 141,
-              "Proves the pipeline runs.", ("test",)),
+              "Proves the pipeline runs.", ("test",),
+              languages="en in practice"),
     ModelSpec("small", GGML, _CPP, _HF_CPP, "ggml-small.bin", 465,
-              "Passable in English."),
+              "Passable in English.",
+              languages="en and the other high-resource languages"),
     ModelSpec("medium", GGML, _CPP, _HF_CPP, "ggml-medium.bin", 1463,
-              "The floor of usable."),
+              "The floor of usable.",
+              languages="all 99, unevenly"),
     ModelSpec("large-v3", GGML, _CPP, _HF_CPP, "ggml-large-v3.bin", 2952,
               "Twice the download, and it reports when it heard nothing.",
-              ("accurate",)),
+              ("accurate",),
+              languages="all 99, evenly"),
     # The default. Half the size of large-v3 and faster, at one measured
     # cost: a turbo model's no_speech_prob is 0 on every segment, so the
     # check that drops a silent take before anything else runs is dead and
@@ -68,12 +72,15 @@ CATALOG: tuple[ModelSpec, ...] = (
     ModelSpec("large-v3-turbo", GGML, _CPP, _HF_CPP, "ggml-large-v3-turbo.bin", 1549,
               "The default: half the size and faster. Cannot tell silence "
               "from speech, so a silent take may type a stock phrase.",
-              ("recommended", "fast")),
+              ("recommended", "fast"),
+              languages="all 99, unevenly — it is a distillation"),
     ModelSpec("large-v3-q5_0", GGML, _CPP, _HF_CPP, "ggml-large-v3-q5_0.bin", 1031,
-              "Quantised large-v3: a third of the VRAM, slightly less accurate.", ("quant",)),
+              "Quantised large-v3: a third of the VRAM, slightly less accurate.", ("quant",),
+              languages="all 99, evenly"),
     ModelSpec("large-v3-turbo-q5_0", GGML, _CPP, _HF_CPP,
               "ggml-large-v3-turbo-q5_0.bin", 547,
-              "The lightest thing still worth using.", ("quant", "fast")),
+              "The lightest thing still worth using.", ("quant", "fast"),
+              languages="all 99, unevenly — it is a distillation"),
 
     # -- LLM, run by the bundled llama-server ---------------------------------
     #
