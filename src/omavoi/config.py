@@ -145,7 +145,12 @@ DEFAULTS: dict[str, Any] = {
         # ones — `omavoi model list` shows both.
         "local": {
             "backend": "llama-local",
-            "model": "llm:qwen3-8b",
+            # gemma-3-4b, not qwen3-8b: the shipped `prose` mode has a local
+            # LLM step, so this is the model a fresh install actually runs —
+            # and qwen is the strongest Chinese at its size and weaker
+            # elsewhere, which is the wrong thing to assume about someone who
+            # has just installed a dictation tool. Half the size, too.
+            "model": "llm:gemma-3-4b",
             "n_gpu_layers": 99,
             "ctx_size": 4096,
             "threads": 0,
@@ -281,9 +286,47 @@ DEFAULTS: dict[str, Any] = {
         # softly-spoken words. So this lower bound applies only below
         # audio.warn_rms_dbfs.
         "quiet_no_speech_threshold": 0.5,
+        # Fillers, split by how the text is written rather than by language:
+        # a space-separated script can be matched on a word boundary, and one
+        # written without spaces has to be bracketed by punctuation instead.
+        # The console offers eight interface languages and this had lists for
+        # two of them, so six were dictating into a rule that did nothing.
+        #
+        # Every entry here is a token that is *not* a word in its language.
+        # The spaced list is removed wherever it appears as a word, so a real
+        # word on it would be deleted out of the middle of a sentence — which
+        # is why German has "äh" and not "also", and Spanish "em" and not
+        # "pues". The unspaced list is safer, because a filler there only
+        # goes when a sentence boundary or a comma brackets it: that is what
+        # lets 那个 be a filler in 那个，我想说 and a demonstrative in 那个函数.
         "fillers_en": ["um", "uh", "erm", "hmm", "er"],
+        "fillers_de": ["äh", "ähm", "öh", "öhm", "hm"],
+        "fillers_fr": ["euh", "heu", "hum"],
+        "fillers_es": ["eh", "em", "ehm"],
         "fillers_cjk": ["嗯", "呃", "啊", "唉", "那个", "这个", "就是说"],
+        "fillers_ja": ["えーと", "えっと", "ええと", "あのー", "えー", "うーん"],
+        # Left empty on purpose. Thai and Vietnamese fillers are mostly
+        # overloaded particles — Thai แบบ and คือ, Vietnamese à and ừ are
+        # ordinary words as often as they are hesitation — and a wrong entry
+        # on a filler list deletes a real word silently. The key exists so
+        # someone who speaks the language can fill it; guessing it here would
+        # be worse than leaving it off.
+        "fillers_th": [],
+        "fillers_vi": [],
+        # What whisper writes when it hears nothing: the subtitle credits and
+        # sign-offs its training data is full of. Matched per sentence and
+        # whole, after folding away punctuation, spacing and case — so a
+        # 谢谢观看 said inside a longer sentence survives and a bare one goes.
+        #
+        # This covers the languages the console offers, which it did not:
+        # seven English entries, five Chinese, one Japanese and one Russian,
+        # for an interface that speaks eight. The cost of a wrong entry here
+        # is only that it never fires — a subtitle credit is not a sentence
+        # anyone dictates — which is the opposite of the filler lists above,
+        # where a wrong entry deletes a real word. So imperfect recall of an
+        # exact credit string is worth having; a guessed filler is not.
         "hallucinations": [
+            # en
             "Thanks for watching!",
             "Thank you for watching!",
             "Thank you.",
@@ -291,13 +334,39 @@ DEFAULTS: dict[str, Any] = {
             "you",
             "Bye.",
             "Subtitles by the Amara.org community",
+            # zh
             "请不吝点赞 订阅 转发 打赏支持明镜与点点栏目",
             "字幕由Amara.org社区提供",
             "由 Amara.org 社群提供的字幕",
             "谢谢观看",
             "感谢观看",
+            "字幕志愿者 李宗盛",
+            "谢谢大家",
+            # ja
             "ご視聴ありがとうございました",
+            "ご視聴ありがとうございます",
+            "最後までご視聴いただきありがとうございました",
+            # de
+            "Untertitel der Amara.org-Community",
+            "Untertitelung aufgrund der Amara.org-Community",
+            "Vielen Dank für das Zuschauen",
+            "Danke fürs Zuschauen!",
+            # fr
+            "Sous-titres réalisés par la communauté d'Amara.org",
+            "Merci d'avoir regardé cette vidéo !",
+            "Sous-titrage Société Radio-Canada",
+            # es
+            "Subtítulos realizados por la comunidad de Amara.org",
+            "Gracias por ver el video",
+            "¡Gracias por ver el vídeo!",
+            # vi
+            "Phụ đề được thực hiện bởi cộng đồng Amara.org",
+            "Hãy subscribe cho kênh Ghiền Mì Gõ để không bỏ lỡ những video hấp dẫn",
+            # th
+            "คำบรรยายโดยชุมชน Amara.org",
+            # ru, which was already here
             "Продолжение следует...",
+            "Субтитры сделал DimaTorzok",
         ],
     },
     "inject": {

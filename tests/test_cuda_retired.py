@@ -111,3 +111,26 @@ def test_no_translation_describes_a_model_that_is_gone():
     live = {entry.note for entry in models.CATALOG} | {config.DEFAULT_STEP_PROMPT}
     orphans = [key for key in i18n._TABLE if key not in live]
     assert not orphans, orphans
+
+
+def test_every_note_has_a_translation():
+    """The other direction, which is the one that shows.
+
+    An orphaned entry is dead weight nobody sees. A note with no entry is a
+    line of English on a Chinese page — and editing a note quietly creates
+    one, because the table is keyed by the English text. That is exactly how
+    qwen3-8b lost its translation: its note was reworded, and the block
+    keyed to the old wording was cleaned up as an orphan.
+    """
+    missing = [entry.key for entry in models.CATALOG
+               if entry.note and entry.note not in i18n._TABLE]
+    assert not missing, f"no translation for the notes of: {missing}"
+    assert config.DEFAULT_STEP_PROMPT in i18n._TABLE
+
+
+def test_every_translation_covers_every_language():
+    """A half-translated entry falls through to English for the rest."""
+    wanted = {lang for lang in i18n.LANGUAGES if lang != "en"}
+    holes = {key[:40]: sorted(wanted - set(langs))
+             for key, langs in i18n._TABLE.items() if wanted - set(langs)}
+    assert not holes, holes

@@ -44,6 +44,33 @@ DEFAULT_STEP_PROMPT = (
 
 # en -> {lang: text}
 _TABLE: dict[str, dict[str, str]] = {
+    "The same strengths with more room. Pick it if you dictate in Chinese.": {
+        _ZH: "同样的长处，空间更大。如果你用中文口述就选它。",
+        _TH: "จุดแข็งเดียวกันแต่มีที่มากกว่า เลือกตัวนี้ถ้าคุณพูดภาษาจีน",
+        _DE: "Die gleichen Stärken mit mehr Platz. Nimm es, wenn du auf Chinesisch diktierst.",
+        _FR: "Les mêmes atouts avec plus de marge. À choisir si vous dictez en chinois.",
+        _ES: "Las mismas virtudes con más margen. Elígelo si dictas en chino.",
+        _JA: "同じ長所でより余裕があります。中国語で書き取るならこれを。",
+        _VI: "Cùng điểm mạnh nhưng rộng hơn. Chọn nó nếu bạn đọc bằng tiếng Trung.",
+    },
+    "The strongest Chinese at this size, and noticeably weaker outside Chinese and English.": {
+        _ZH: "同尺寸里中文最强，但在中英之外明显弱一些。",
+        _TH: "ภาษาจีนแข็งที่สุดในขนาดนี้ และอ่อนลงชัดเจนนอกจากจีนกับอังกฤษ",
+        _DE: "Das stärkste Chinesisch in dieser Größe, und außerhalb von Chinesisch und Englisch merklich schwächer.",
+        _FR: "Le meilleur chinois à cette taille, et nettement plus faible en dehors du chinois et de l'anglais.",
+        _ES: "El mejor chino de este tamaño, y notablemente más flojo fuera del chino y el inglés.",
+        _JA: "このサイズでは中国語が最も強く、中国語と英語以外では明らかに弱くなります。",
+        _VI: "Tiếng Trung mạnh nhất ở cỡ này, và yếu đi rõ rệt ngoài tiếng Trung và tiếng Anh.",
+    },
+    "Even coverage across languages, and half the size of qwen3-8b. The default.": {
+        _ZH: "各语言表现均衡，体积只有 qwen3-8b 的一半。默认选择。",
+        _TH: "ทำได้สม่ำเสมอทุกภาษา และเล็กเพียงครึ่งของ qwen3-8b ค่าเริ่มต้น",
+        _DE: "Gleichmäßig über Sprachen hinweg, und halb so groß wie qwen3-8b. Die Vorgabe.",
+        _FR: "Une couverture égale entre les langues, pour moitié moins gros que qwen3-8b. Le choix par défaut.",
+        _ES: "Cobertura uniforme entre idiomas, y la mitad de tamaño que qwen3-8b. El valor por defecto.",
+        _JA: "言語をまたいで均等で、qwen3-8b の半分のサイズ。既定値です。",
+        _VI: "Đồng đều giữa các ngôn ngữ, và nhỏ bằng nửa qwen3-8b. Mặc định.",
+    },
     "Twice the download, and it reports when it heard nothing.": {
         _ZH: "下载量是两倍，但它会报告自己什么都没听到。",
         _TH: "ดาวน์โหลดใหญ่เป็นสองเท่า แต่มันบอกได้ว่าไม่ได้ยินอะไรเลย",
@@ -166,43 +193,6 @@ _TABLE: dict[str, dict[str, str]] = {
         _ES: "Lo más ligero que todavía vale la pena.",
         _JA: "まだ使う価値のある、最も軽いものです。",
         _VI: "Thứ nhẹ nhất mà vẫn còn đáng dùng.",
-    },
-    "Fast, and the best Chinese at this size. Other languages are along for the ride.": {
-        _ZH: "快，而且是这个体积里中文最好的。其他语言只是顺带支持。",
-        _TH: "เร็ว และภาษาจีนดีที่สุดในขนาดนี้ ภาษาอื่นเป็นของแถม",
-        _DE: "Schnell, und das beste Chinesisch in dieser Größe. Andere Sprachen fahren mit.",
-        _FR: "Rapide, et le meilleur chinois à cette taille. Les autres langues suivent.",
-        _ES: "Rápido, y el mejor chino de este tamaño. Los demás idiomas van de acompañantes.",
-        _JA: "速く、このサイズでは中国語が最良。他の言語はついでの対応です。",
-        _VI: "Nhanh, và tiếng Trung tốt nhất ở cỡ này. Các thứ tiếng khác chỉ là đi kèm.",
-    },
-    "The same strengths with more room. A good default when the source language is Chinese.": {
-        _ZH: "同样的长处，但余量更大。源语言是中文时的好默认选择。",
-        _TH: "จุดแข็งเดิมแต่มีที่เหลือมากกว่า เป็นค่าเริ่มต้นที่ดีเมื่อภาษาต้นทางเป็นจีน",
-        _DE: "Die gleichen Stärken mit mehr Luft. Gute Vorgabe, wenn die Quellsprache "
-            "Chinesisch ist.",
-        _FR: "Les mêmes forces avec plus de marge. Un bon choix par défaut quand la "
-            "langue source est le chinois.",
-        _ES: "Las mismas virtudes con más margen. Buena opción por defecto cuando el "
-            "idioma de origen es el chino.",
-        _JA: "同じ長所に余裕が加わります。元の言語が中国語なら良い既定値です。",
-        _VI: "Vẫn những điểm mạnh đó nhưng dư dả hơn. Mặc định tốt khi ngôn ngữ nguồn là "
-            "tiếng Trung.",
-    },
-    "Broader language coverage than Qwen at this size, which shows on translation into "
-    "anything but English.": {
-        _ZH: "在这个体积上语言覆盖比 Qwen 更广，翻译成英文以外的语言时差别明显。",
-        _TH: "ครอบคลุมภาษากว้างกว่า Qwen ในขนาดนี้ "
-            "เห็นผลชัดเมื่อแปลเป็นภาษาอื่นที่ไม่ใช่อังกฤษ",
-        _DE: "Breitere Sprachabdeckung als Qwen in dieser Größe, was sich bei "
-            "Übersetzungen in alles außer Englisch zeigt.",
-        _FR: "Couverture linguistique plus large que Qwen à cette taille, ce qui se voit "
-            "en traduction vers autre chose que l'anglais.",
-        _ES: "Cobertura de idiomas más amplia que Qwen a este tamaño, lo que se nota al "
-            "traducir a algo que no sea inglés.",
-        _JA: "このサイズでは Qwen より対応言語が広く、英語以外への翻訳で差が出ます。",
-        _VI: "Phủ nhiều ngôn ngữ hơn Qwen ở cỡ này, thấy rõ khi dịch sang thứ tiếng khác "
-            "ngoài tiếng Anh.",
     },
     "The best translation here, and the heaviest. Leaves little room beside a large "
     "speech model.": {

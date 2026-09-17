@@ -66,7 +66,12 @@ def test_no_setting_is_declared_and_never_read():
         leaf = dotted.rsplit(".", 1)[-1]
         read = (re.search(rf'\["{re.escape(leaf)}"\]', without_defaults)
                 or re.search(rf'\.get\(\s*"{re.escape(leaf)}"', without_defaults)
-                or re.search(rf'"{re.escape(dotted)}"', without_defaults))
+                or re.search(rf'"{re.escape(dotted)}"', without_defaults)
+                # Named as a bare literal, which is how a key reached by a
+                # loop over several of them is referenced: the filler lists
+                # are gathered as `for key in ("fillers_cjk", "fillers_ja",
+                # …): post.get(key, [])`, and that is a reference.
+                or re.search(rf'"{re.escape(leaf)}"', without_defaults))
         if not read:
             orphans.append(dotted)
     assert not orphans, (

@@ -81,23 +81,28 @@ CATALOG: tuple[ModelSpec, ...] = (
     # catalogue entry that 404s on click is worse than no entry.
     ModelSpec("qwen3-4b", GGML, _LLM, "Qwen/Qwen3-4B-GGUF",
               "Qwen3-4B-Q4_K_M.gguf", 2382,
-              "Fast, and the best Chinese at this size. Other languages are "
-              "along for the ride.", ("fast",), kind=LLM,
+              "The strongest Chinese at this size, and noticeably weaker "
+              "outside Chinese and English.", ("fast",), kind=LLM,
               languages="strong zh/en"),
     ModelSpec("qwen3-8b", GGML, _LLM, "Qwen/Qwen3-8B-GGUF",
               "Qwen3-8B-Q4_K_M.gguf", 4795,
-              "The same strengths with more room. A good default when the "
-              "source language is Chinese.", ("recommended",), kind=LLM,
+              "The same strengths with more room. Pick it if you dictate in "
+              "Chinese.", (), kind=LLM,
               languages="strong zh/en"),
+    # Recommended because it is the one that does not assume what language
+    # you speak. The tag was on qwen3-8b, whose own note said it was "a good
+    # default when the source language is Chinese" — a recommendation with a
+    # condition on it, used as the unconditional one, and shipped as
+    # llm.local.model so a fresh install ran it whatever you dictated.
     ModelSpec("gemma-3-4b", GGML, _LLM, "ggml-org/gemma-3-4b-it-GGUF",
               "gemma-3-4b-it-Q4_K_M.gguf", 2374,
-              "Broader language coverage than Qwen at this size, which shows "
-              "on translation into anything but English.", ("fast",), kind=LLM,
+              "Even coverage across languages, and half the size of qwen3-8b. "
+              "The default.", ("recommended", "fast"), kind=LLM,
               languages="broad multilingual"),
     ModelSpec("gemma-3-12b", GGML, _LLM, "ggml-org/gemma-3-12b-it-GGUF",
               "gemma-3-12b-it-Q4_K_M.gguf", 6962,
               "The best translation here, and the heaviest. Leaves little room "
-              "beside a large speech model.", (), kind=LLM,
+              "beside a large speech model.", ("accurate",), kind=LLM,
               languages="broad multilingual"),
 )
 

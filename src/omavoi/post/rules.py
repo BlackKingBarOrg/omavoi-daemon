@@ -128,6 +128,16 @@ def drop_hallucinations(text: str, phrases: list[str]) -> str:
     targets = {_norm(p) for p in phrases if p.strip()}
     if not text or not targets:
         return text
+    # The whole take first, because a phrase with a full stop inside it never
+    # matches a sentence chunk: the split happens at that full stop. Every
+    # Amara subtitle credit contains "Amara.org", so
+    # "Subtitles by the Amara.org community" split into "Subtitles by the
+    # Amara." and "org community" and neither was the phrase. Three of the
+    # fourteen shipped phrases had never once fired, including the English
+    # one — and the credits are the commonest thing whisper writes for
+    # silence.
+    if _norm(text) in targets:
+        return ""
     kept = [s for s in _SENTENCE_SPLIT.split(text) if s.strip() and _norm(s) not in targets]
     return "".join(kept).strip()
 
@@ -144,18 +154,24 @@ def dedupe_sentences(text: str) -> str:
     return "".join(out)
 
 
-def strip_fillers(text: str, fillers_zh: list[str], fillers_en: list[str]) -> str:
+def strip_fillers(text: str, unspaced: list[str], spaced: list[str]) -> str:
     """Drop hesitation sounds, but only where they stand alone.
 
-    那个 is a filler in 那个，我想说 and a real word in 那个函数, so it goes
-    only when a sentence boundary or comma brackets it.
+    Two lists because two scripts behave differently, not because two
+    languages do. `unspaced` is for text written without spaces — Chinese,
+    Japanese, Thai — where there is no word boundary to anchor on, so a
+    filler goes only when a sentence boundary or a comma brackets it: that
+    is what lets 那個 be a filler in 那个，我想说 and a demonstrative in
+    那个函数. `spaced` is matched on \b wherever it appears, which is
+    stricter about what may go on it: a real word there would be deleted out
+    of the middle of a sentence.
     """
     if not text:
         return text
 
     before = text
 
-    zh = [re.escape(f) for f in fillers_zh if f.strip()]
+    zh = [re.escape(f) for f in unspaced if f.strip()]
     if zh:
         boundary = r"[，,。．.！!？?；;：:\s]"
         pattern = re.compile(rf"(^|(?<={boundary}))\s*(?:{'|'.join(zh)})\s*(?={boundary}|$)")
@@ -165,7 +181,7 @@ def strip_fillers(text: str, fillers_zh: list[str], fillers_en: list[str]) -> st
                 break
             text = new
 
-    en = [re.escape(f) for f in fillers_en if f.strip()]
+    en = [re.escape(f) for f in spaced if f.strip()]
     if en:
         text = re.sub(rf"\b(?:{'|'.join(en)})\b[,\s]*", "", text, flags=re.IGNORECASE)
 
@@ -302,7 +318,16 @@ def run(
             return result
 
     if rules.get("fillers", True):
-        after = strip_fillers(step, post.get("fillers_cjk", []), post.get("fillers_en", []))
+        # Gathered by script, not by language: strip_fillers matches the
+        # first set between punctuation (no word boundaries to use) and the
+        # second on \b. Whatever language someone is dictating in, only the
+        # lists that cannot fire on it are inert.
+        unspaced = [f for key in ("fillers_cjk", "fillers_ja", "fillers_th")
+                    for f in post.get(key, []) or []]
+        spaced = [f for key in ("fillers_en", "fillers_de", "fillers_fr",
+                                "fillers_es", "fillers_vi")
+                  for f in post.get(key, []) or []]
+        after = strip_fillers(step, unspaced, spaced)
         if after != step:
             result.changes.append("fillers")
             step = after
