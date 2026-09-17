@@ -181,18 +181,6 @@ def check(cfg: dict[str, Any]) -> Report:
                  + ("" if has_gpu else " Swap ggml-vulkan for ggml-cuda or "
                     "ggml-hip if you would rather use the vendor backend."),
         ))
-    elif backend == "local-whisper":
-        try:
-            import ctranslate2  # noqa: F401
-
-            ok, detail = True, "ctranslate2 with the CUDA runtime wheels"
-        except ImportError:
-            ok, detail = False, "ctranslate2 is not installed"
-        steps.append(Step(
-            "engine", "Speech engine (CUDA)", ok, detail=detail,
-            command="uv tool install 'omavoi[cuda]'",
-            note="About 2.2 GB of NVIDIA wheels. Roughly twice as fast as Vulkan.",
-        ))
     else:
         steps.append(Step("engine", "Speech engine (remote API)", True,
                           detail=f"provider {cfg['speech']['api'].get('provider', '?')}"))

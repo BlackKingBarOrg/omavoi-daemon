@@ -9,14 +9,14 @@ Everything runs on your own machine.
                                                         ▼
   ring buffer ──▶ speech model ──▶ rules ──▶ LLM (opt) ──▶ your window
    (pre-roll)      whisper.cpp     dictionary,  per mode      wtype or
-                   or CUDA         names, …                   paste
+                   on Vulkan       names, …                   paste
 ```
 
 ## Why three pieces
 
 `omarchy-shell` is a single Quickshell process that also draws your bar,
 notifications and lock screen. A plugin is QML running *inside* it, so a
-speech model, CUDA and a microphone reader cannot live there. Omavoi is
+speech model and a microphone reader cannot live there. Omavoi is
 therefore:
 
 | | what it is | how it installs |
@@ -55,13 +55,6 @@ uv tool install git+https://github.com/BlackKingBarOrg/omavoi
 omavoi setup
 
 # 4. the systemd user unit, which ships with the plugin, not with the package
-```
-
-The CUDA engine is an extra, because CTranslate2, PyAV and onnxruntime are
-300 MB for a backend that only runs on NVIDIA and is not the default:
-
-```bash
-uv tool install --reinstall "omavoi[cuda] @ git+https://github.com/BlackKingBarOrg/omavoi"
 ```
 
 `ggml-cpu` is **not** optional. Arch ships ggml's compute backends as separate
@@ -211,14 +204,18 @@ omavoi reload                 make the daemon re-read the config
 
 | | install size | notes |
 |---|---|---|
-| whisper.cpp on Vulkan | ~10 MB | default; NVIDIA, AMD, Intel |
-| faster-whisper on CUDA | ~2.2 GB of wheels | NVIDIA only |
+| whisper.cpp on Vulkan | ~10 MB | NVIDIA, AMD, Intel, and CPU where there is no GPU |
 | any OpenAI-compatible API | — | audio leaves the machine |
 
-On short push-to-talk takes the two local engines are close: measured on one
-RTX 5070 Ti, Vulkan decoded a 3 s clip in 0.25 s against CUDA's 0.39 s, because
-fixed overhead dominates at that length. Vulkan is the default for the install
-size and the breadth of hardware, not because it is slower.
+There used to be a second local engine, faster-whisper on CTranslate2, for
+about 2.2 GB of CUDA wheels and NVIDIA only. On the short push-to-talk takes
+this program is for, the two measured within a tenth of a second of each
+other — on one RTX 5070 Ti, Vulkan decoded a 3 s clip in 0.25 s against
+CUDA's 0.39 s, because fixed overhead dominates at that length. It was a
+second engine, a second model format, a second set of runtime library
+problems and a 2.2 GB install for a difference nobody could feel, so it is
+gone. A config that still names it is moved to whisper.cpp on the next load,
+and its model with it.
 
 An LLM step is separate and optional, configured per mode: a local llama.cpp
 server, the Claude API, or any OpenAI-compatible endpoint.

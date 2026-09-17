@@ -32,13 +32,6 @@ def why_unavailable(name: str) -> str:
             return ("whisper.cpp is not installed. "
                     "Run: sudo pacman -S --needed whisper-cpp ggml-cpu ggml-vulkan")
         return ""
-    if name == "local-whisper":
-        import importlib.util
-
-        if importlib.util.find_spec("faster_whisper") is None:
-            return ("the CUDA engine needs faster-whisper. "
-                    "Run: uv tool install --reinstall omavoi[cuda]")
-        return ""
     if name == "api":
         from .. import secrets
 
@@ -49,12 +42,11 @@ def why_unavailable(name: str) -> str:
 
 # name -> (aliases, one-line description)
 BACKENDS: dict[str, tuple[tuple[str, ...], str]] = {
-    "local-whisper": (
-        ("local", "faster-whisper", "whisper", "ct2"),
-        "faster-whisper / CTranslate2. NVIDIA CUDA only; fastest where it runs.",
-    ),
     "local-whispercpp": (
-        ("whispercpp", "whisper.cpp", "cpp", "vulkan"),
+        # `local` and `whisper` used to name the CUDA engine; they point at
+        # the one local engine there is now, so a config or a habit that
+        # still says either lands somewhere that works.
+        ("local", "whispercpp", "whisper.cpp", "cpp", "vulkan", "whisper"),
         "whisper.cpp. Vulkan covers NVIDIA, AMD and Intel, and it runs on CPU too.",
     ),
     "api": (
@@ -72,10 +64,6 @@ def canonical(name: str) -> str | None:
 
 def build(cfg: dict[str, Any]) -> Backend:
     name = canonical(cfg["speech"]["backend"])
-    if name == "local-whisper":
-        from .local_whisper import LocalWhisperBackend
-
-        return LocalWhisperBackend(cfg)
     if name == "local-whispercpp":
         from .local_whispercpp import WhisperCppBackend
 

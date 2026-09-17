@@ -20,7 +20,7 @@ def test_every_legal_value_is_accepted(home):
     for key in ("speech.backend", "llm.api.backend", "hotkey.mode",
                 "inject.method", "modes.default.inject",
                 "modes.default.rules.punctuation", "ui.hud_dwell",
-                "ui.language", "speech.local_whisper.device", "switching.mode",
+                "ui.language", "switching.mode",
                 "ui.hud_size", "ui.hud_position", "inject.paste_method",
                 "modes.default.paste_method", "speech.api.response_format",
                 "audio.rate", "hotkey.force_mode"):
@@ -37,8 +37,7 @@ def test_every_legal_value_is_accepted(home):
 @pytest.mark.parametrize("key", [
     "speech.backend", "llm.api.backend", "hotkey.mode", "inject.method",
     "modes.default.inject", "modes.default.rules.punctuation",
-    "ui.hud_dwell", "ui.language", "speech.local_whisper.device",
-    "switching.mode", "ui.hud_size", "ui.hud_position", "inject.paste_method",
+    "ui.hud_dwell", "ui.language", "switching.mode", "ui.hud_size", "ui.hud_position", "inject.paste_method",
     "modes.default.paste_method", "speech.api.response_format", "audio.rate",
     "hotkey.force_mode",
 ])
@@ -164,10 +163,16 @@ def test_speech_model_must_be_in_the_catalogue(home):
     speech.model` took anything, and setup builds
     `omavoi model pull {key}` out of it for subprocess.call(shell=True).
     """
-    assert settings._why_not_that_choice("speech.model", "x; echo pwned")
-    assert settings._why_not_that_choice("speech.model", "not-a-model")
-    assert settings._why_not_that_choice("speech.model", "ggml:large-v3") == ""
-    assert settings._why_not_that_choice("speech.model", "large-v3") == ""
+    bad = settings._why_not_that_speech_model
+    assert bad("speech.model", "x; echo pwned")
+    assert bad("speech.model", "not-a-model")
+    assert bad("speech.model", "llm:qwen3-4b"), "an LLM is not a speech model"
+    assert bad("speech.model", "ggml:large-v3") == ""
+    # `model rm` and `mode set … speech_model` both take the bare name, so
+    # this does too rather than being the one command that does not.
+    # retire_cuda_engine rewrites it to ggml:large-v3 on the next load.
+    assert bad("speech.model", "large-v3") == ""
+    assert bad("hotkey.key", "anything") == "", "it answers for one key only"
 
 
 def test_the_setup_command_survives_a_hand_edited_config(home):

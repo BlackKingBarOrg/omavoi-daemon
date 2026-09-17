@@ -44,15 +44,6 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
 
     if key == "speech.backend":
         return tuple(sorted(asr.BACKENDS)), "a speech engine"
-    if key == "speech.model":
-        # `mode set <m> speech_model` has checked this since it was written,
-        # and config.validate reports a bad one per load — but `config set
-        # speech.model` took anything, and that value is interpolated into
-        # the `omavoi model pull …` line that `omavoi setup --run` hands to a
-        # shell. A model key is not a place to accept arbitrary text.
-        from .. import models
-        return (tuple(m.key for m in models.CATALOG if m.kind == models.SPEECH),
-                "a speech model in the catalogue")
     if at("llm", "*", "backend"):
         return tuple(sorted(LLM_BACKENDS)), "an LLM backend"
     if key == "hotkey.mode":
@@ -66,8 +57,6 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
     if key == "ui.language":
         # "" follows the system locale, which is the shipped default.
         return ("", *i18n.LANGUAGES), "an interface language"
-    if key == "speech.local_whisper.device":
-        return ("auto", "cpu", "cuda"), "a device"
     if key == "switching.mode":
         return tuple(sorted(cfg.get("modes", {}))), "a mode that exists"
     if key == "hotkey.force_mode":
@@ -129,6 +118,32 @@ def _why_not_that_number(key: str, value: str) -> str:
     if n < low or n > high:
         return (f"{value} is outside {low:g}–{high:g} — {key} is {what}")
     return ""
+
+
+def _why_not_that_speech_model(key: str, value: str) -> str:
+    """Why this is not a speech model, or "" if it is.
+
+    `config set speech.model` used to take anything, and that value is
+    interpolated into the `omavoi model pull …` line `omavoi setup --run`
+    hands to a shell.
+
+    Not in _legal_values because membership and the message want different
+    lists. `omavoi model rm large-v3` and `mode set … speech_model large-v3`
+    both accept the bare name — models.spec resolves one as ggml — so this
+    accepts it too rather than being the one command that does not. The
+    message lists only the catalogue's own spelling, which is what someone
+    should be typing, and config.retire_cuda_engine rewrites a bare one on
+    the next load so the file ends up saying the same thing.
+    """
+    if key != "speech.model" or not value.strip():
+        return ""
+    from .. import models
+
+    entry = models.spec(value.strip())
+    if entry is not None and entry.kind == models.SPEECH:
+        return ""
+    known = ", ".join(m.key for m in models.CATALOG if m.kind == models.SPEECH)
+    return f"{value!r} is not a speech model. One of: {known}"
 
 
 def _why_not_that_level(key: str, value: str) -> str:
@@ -219,6 +234,7 @@ def cmd_config(args: argparse.Namespace) -> int:
         why = _why_not_that_hotkey(args.key, args.value) \
             or _why_not_that_llm_model(args.key, args.value) \
             or _why_not_that_provider(args.key, args.value) \
+            or _why_not_that_speech_model(args.key, args.value) \
             or _why_not_that_level(args.key, args.value) \
             or _why_not_that_language(args.key, args.value) \
             or _why_not_that_choice(args.key, args.value) \

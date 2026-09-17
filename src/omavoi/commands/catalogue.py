@@ -146,8 +146,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                     return spec.key in running_llm
                 if not running_speech:
                     return False
-                return (spec.key == running_speech
-                        or (spec.fmt == models.CT2 and spec.id == running_speech))
+                return spec.key == running_speech
 
             # Which weights an LLM configuration points at, so an llm row can
             # answer "is this the one in use?" the same way a speech row does.
@@ -179,9 +178,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                     "ours": models.owned_by_us(spec.key),
                     "active": (spec.key in llm_chosen
                                if spec.kind == models.LLM
-                               else spec.key == active
-                                    or (spec.fmt == models.CT2
-                                        and spec.id == active)),
+                               else spec.key == active),
                     "running": _is_running(spec),
                 })
             from .. import gpu, secrets
@@ -277,7 +274,6 @@ def cmd_model(args: argparse.Namespace) -> int:
             return 0
         print(f"{BOLD}  {'model':<24}{'size':>7}  {'state':<10}notes{RESET}")
         groups = [
-            (models.CT2, models.SPEECH, "speech · local-whisper (CUDA)"),
             (models.GGML, models.SPEECH, "speech · local-whispercpp (Vulkan)"),
             ("", models.LLM, "llm · llama-local, started by the daemon"),
         ]
@@ -289,7 +285,7 @@ def cmd_model(args: argparse.Namespace) -> int:
             print(f"\n{DIM}{engine}{RESET}")
             for spec in entries:
                 here = models.is_downloaded(spec.key)
-                current = spec.key == active or (fmt == models.CT2 and spec.id == active)
+                current = spec.key == active
                 mark = f"{GREEN}*{RESET}" if current else (f"{DIM}.{RESET}" if here else " ")
                 state = f"{GREEN}local{RESET}" if here else f"{DIM}remote{RESET}"
                 tag = f" {YELLOW}[recommended]{RESET}" if "recommended" in spec.tags else ""

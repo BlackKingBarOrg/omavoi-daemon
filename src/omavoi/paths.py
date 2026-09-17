@@ -76,16 +76,6 @@ def runtime_dir() -> Path:
     return Path(value) if value else Path(f"/run/user/{os.getuid()}")
 
 
-def hf_cache_dir() -> Path:
-    value = os.environ.get("HF_HUB_CACHE")
-    if value:
-        return Path(value)
-    home = os.environ.get("HF_HOME")
-    if home:
-        return Path(home) / "hub"
-    return _xdg("XDG_CACHE_HOME", ".cache") / "huggingface" / "hub"
-
-
 def config_file() -> Path:
     return config_dir() / "config.toml"
 

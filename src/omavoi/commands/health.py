@@ -195,7 +195,6 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    from .. import cudaenv
     from ..hotkey import find_devices, key_code
 
     cfg = config.load()
@@ -299,18 +298,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             key = f"ggml:{key}"
         check(f"model {key}", models.is_downloaded(key),
               str(models.local_path(key) or f"{YELLOW}omavoi model pull {key}{RESET}"))
-    else:
-        info = cudaenv.diagnose()
-        check("ctranslate2", "ctranslate2" in info,
-              str(info.get("ctranslate2", info.get("ctranslate2_error"))))
-        devices = int(info.get("cuda_devices", 0) or 0)
-        check("cuda devices", devices > 0,
-              f"{devices}" if devices else f"{YELLOW}none, will run on CPU{RESET}")
-        check("cuda runtime libs", not info.get("preload_failures"),
-              f"{info.get('preloaded_count', 0)} preloaded from wheels")
-        key = cfg["speech"]["model"]
-        check(f"model {key}", models.is_downloaded(key),
-              str(models.local_path(key) or f"{YELLOW}omavoi model pull {key}{RESET}"))
+    elif backend_name == "api":
+        # The endpoint answers or it does not, and `omavoi speech check`
+        # is the command that asks. Nothing local to inspect.
+        api = cfg["speech"].get("api") or {}
+        check("endpoint", bool(api.get("base_url") or api.get("provider")),
+              str(api.get("base_url") or api.get("provider") or "not configured"))
 
     print(f"\n{BOLD}audio{RESET}")
     try:

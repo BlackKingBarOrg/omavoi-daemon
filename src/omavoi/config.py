@@ -97,12 +97,17 @@ DEFAULTS: dict[str, Any] = {
     },
     "speech": {
         # Exactly one speech engine is active at a time.
-        # local-whispercpp | local-whisper | api
+        # local-whispercpp | api
         #
-        # whisper.cpp on Vulkan is the default because it is what most people
-        # can actually install: ~8 MB of packages against ~2.2 GB of CUDA
-        # wheels, and it runs on AMD and Intel too. CUDA is roughly twice as
-        # fast on NVIDIA — switch to local-whisper if that is what you have.
+        # whisper.cpp on Vulkan runs on NVIDIA, AMD and Intel alike, and on
+        # CPU where there is no GPU, out of ~8 MB of packages. There used to
+        # be a faster-whisper/CTranslate2 engine beside it, NVIDIA-only, for
+        # ~2.2 GB of CUDA wheels — and on the short push-to-talk takes this
+        # program is for, the two measured within a tenth of a second of each
+        # other, because fixed overhead dominates at that length. It was a
+        # second engine, a second model format, a second set of runtime
+        # library problems and a 2.2 GB install, for nothing anyone could
+        # feel.
         "backend": "local-whispercpp",
         "model": "ggml:large-v3",
         "language": "",
@@ -114,16 +119,6 @@ DEFAULTS: dict[str, Any] = {
             "ggml_backend_path": "",
             "beam_size": 5,
             "startup_timeout": 120.0,
-        },
-        "local_whisper": {
-            "device": "auto",
-            "compute_type": "auto",
-            "beam_size": 5,
-            "cpu_threads": 0,
-            # Whisper's own VAD drops quiet speech, which reads as dropped
-            # words. Endpointing is this program's job, not its.
-            "vad_filter": False,
-            "temperature_fallback": True,
         },
         "api": {
             "provider": "openai",
@@ -403,7 +398,7 @@ def load(path: Path | None = None) -> dict[str, Any]:
             mode["rules"] = _RULE_DEFAULTS | dict(mode.get("rules") or {})
     # Entries from before there were three of them. Reported, not silent: a
     # fold rewrites the steps that named them.
-    folded = migrate(merged) + follow_ui_language(merged)
+    folded = migrate(merged) + retire_cuda_engine(merged) + follow_ui_language(merged)
     for note in folded:
         log.info("config: %s", note)
     if folded and path.exists():
@@ -442,6 +437,57 @@ def _kind_of(backend: str) -> str:
         if b in names:
             return kind
     return ""
+
+
+def retire_cuda_engine(cfg: dict[str, Any]) -> list[str]:
+    """Move a config off the faster-whisper engine, which no longer exists.
+
+    Without this an upgraded install has `speech.backend = "local-whisper"`,
+    asr.build raises on an unknown backend, and the daemon fails on every
+    start — the loudest possible way to deliver a removal, and to someone who
+    did nothing but update.
+
+    The model key moves with it. A ct2 model was named bare — `large-v3` —
+    and the ggml catalogue has the same names, so the equivalent is the one
+    with the prefix. Where there is no equivalent the shipped default is
+    used, because a key that names nothing stops the daemon just as dead.
+
+    Reported, like the [llm.*] fold: the config file changed underneath.
+    """
+    from . import models
+
+    notes: list[str] = []
+    speech = cfg.get("speech") or {}
+    if str(speech.get("backend", "")) in ("local-whisper", "faster-whisper", "ct2"):
+        speech["backend"] = "local-whispercpp"
+        notes.append("speech.backend was the removed CUDA engine, "
+                     "now local-whispercpp (whisper.cpp on Vulkan)")
+    # Dropped whether or not the backend was in use: it configures nothing.
+    if speech.pop("local_whisper", None) is not None:
+        notes.append("[speech.local_whisper] configured the removed engine and is gone")
+
+    want = str(speech.get("model", "") or "")
+    if want and ":" not in want:
+        # A bare name was the ct2 spelling. It still resolves — parse_key
+        # reads one as ggml now — but leaving it bare means `config show`
+        # names the model in a form that no longer has a meaning of its own.
+        # Six of the eight ct2 names exist verbatim in the ggml catalogue.
+        # These two do not, and falling through to the shipped default would
+        # hand someone who had deliberately chosen 75 MB a 3 GB download.
+        nearest = {"tiny": "base", "distil-large-v3": "large-v3-turbo"}
+        moved = f"{models.GGML}:{nearest.get(want, want)}"
+        if models.spec(moved) is not None:
+            speech["model"] = moved
+            notes.append(f"speech.model {want!r} was a ct2 model, now {moved!r}")
+        else:
+            speech["model"] = DEFAULTS["speech"]["model"]
+            notes.append(f"speech.model {want!r} has no whisper.cpp equivalent, "
+                         f"now {speech['model']!r}")
+    elif want and models.spec(want) is None:
+        speech["model"] = DEFAULTS["speech"]["model"]
+        notes.append(f"speech.model {want!r} names nothing in the catalogue, "
+                     f"now {speech['model']!r}")
+    return notes
 
 
 def follow_ui_language(cfg: dict[str, Any]) -> list[str]:

@@ -2,7 +2,6 @@
 
 Two on-disk formats, because the two local engines can't share weights:
 
-  ct2   CTranslate2, for faster-whisper. CUDA only, fastest on NVIDIA.
   ggml  whisper.cpp. Runs on Vulkan (any GPU), CUDA, ROCm, or CPU.
 
 Existing ggml files from other tools are discovered rather than re-downloaded —
@@ -11,20 +10,19 @@ a 3 GB model is not worth having twice.
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import paths
 
-CT2, GGML = "ct2", "ggml"
+GGML = "ggml"
 SPEECH, LLM = "speech", "llm"
 
 
 @dataclass(frozen=True, slots=True)
 class ModelSpec:
     id: str
-    fmt: str              # CT2 | GGML
+    fmt: str              # GGML — the only speech format left
     backend: str          # which backend runs it
     repo: str             # HuggingFace repo
     filename: str = ""    # single-file models (ggml); empty = whole snapshot
@@ -36,38 +34,20 @@ class ModelSpec:
 
     @property
     def key(self) -> str:
-        """How you name it: `large-v3`, `ggml:large-v3`, `llm:qwen3-8b`."""
-        if self.kind == LLM:
-            return f"{LLM}:{self.id}"
-        return self.id if self.fmt == CT2 else f"{GGML}:{self.id}"
+        """How you name it: `ggml:large-v3`, `llm:qwen3-8b`.
+
+        Every key carries its prefix now. The bare spelling — `large-v3` —
+        belonged to the ct2 models, which were the faster-whisper engine's,
+        and both are gone.
+        """
+        return f"{LLM if self.kind == LLM else GGML}:{self.id}"
 
 
-_CT2 = "local-whisper"
 _CPP = "local-whispercpp"
 _LLM = "llama-local"
 _HF_CPP = "ggerganov/whisper.cpp"
 
 CATALOG: tuple[ModelSpec, ...] = (
-    # -- CTranslate2 (CUDA) -------------------------------------------------
-    ModelSpec("tiny", CT2, _CT2, "Systran/faster-whisper-tiny", "", 75,
-              "Proves the pipeline runs. Not usable for real dictation.", ("test",)),
-    ModelSpec("base", CT2, _CT2, "Systran/faster-whisper-base", "", 141,
-              "Better than tiny, still not worth using daily.", ("test",)),
-    ModelSpec("small", CT2, _CT2, "Systran/faster-whisper-small", "", 464,
-              "Passable in English, struggles elsewhere."),
-    ModelSpec("medium", CT2, _CT2, "Systran/faster-whisper-medium", "", 1460,
-              "The floor of usable. A fallback when VRAM is tight."),
-    ModelSpec("large-v2", CT2, _CT2, "Systran/faster-whisper-large-v2", "", 2946,
-              "The previous large. Steadier on some accents."),
-    ModelSpec("large-v3", CT2, _CT2, "Systran/faster-whisper-large-v3", "", 2948,
-              "Best all-round. no_speech_prob is trustworthy, so silence is caught.", ("recommended",)),
-    ModelSpec("large-v3-turbo", CT2, _CT2,
-              "mobiuslabsgmbh/faster-whisper-large-v3-turbo", "", 1547,
-              "2x faster, but no_speech_prob is always 0 — it cannot detect silence.", ("fast",)),
-    ModelSpec("distil-large-v3", CT2, _CT2,
-              "Systran/faster-distil-whisper-large-v3", "", 1446,
-              "English-only distillation. Unusable for other languages.", ("fast", "en")),
-
     # -- whisper.cpp / ggml (Vulkan, any GPU) --------------------------------
     ModelSpec("base", GGML, _CPP, _HF_CPP, "ggml-base.bin", 141,
               "Proves the pipeline runs.", ("test",)),
@@ -113,11 +93,16 @@ CATALOG: tuple[ModelSpec, ...] = (
 
 
 def parse_key(key: str) -> tuple[str, str]:
-    """`ggml:large-v3` -> ("ggml", "large-v3"); bare names default to ct2."""
+    """`ggml:large-v3` -> ("ggml", "large-v3").
+
+    A bare name used to mean a ct2 model. There are none, so it means the
+    ggml one of that name — which is what someone typing `large-v3` wants,
+    and what an upgraded config that still holds a bare key resolves to.
+    """
     if ":" in key:
         fmt, _, name = key.partition(":")
         return fmt.strip().lower(), name.strip()
-    return CT2, key.strip()
+    return GGML, key.strip()
 
 
 def spec(key: str) -> ModelSpec | None:
@@ -147,10 +132,6 @@ def ggml_search_dirs() -> list[Path]:
         Path.home() / ".cache" / "whisper.cpp",
         Path("/usr/share/whisper.cpp/models"),
     ]
-
-
-def _hf_dirname(repo: str) -> str:
-    return "models--" + repo.replace("/", "--")
 
 
 def bytes_in_flight(key: str) -> int:
@@ -187,20 +168,12 @@ def local_path(key: str) -> Path | None:
         candidate = llm_dir() / entry.filename
         return candidate if candidate.is_file() else None
 
-    if entry.fmt == GGML:
-        for directory in ggml_search_dirs():
-            candidate = directory / entry.filename
-            if candidate.is_file():
-                return candidate
-        return None
+    for directory in ggml_search_dirs():
+        candidate = directory / entry.filename
+        if candidate.is_file():
+            return candidate
+    return None
 
-    for root in (model_root(), paths.hf_cache_dir()):
-        base = root / _hf_dirname(entry.repo) / "snapshots"
-        if not base.is_dir():
-            continue
-        for snapshot in sorted(base.iterdir(), reverse=True):
-            if (snapshot / "model.bin").exists():
-                return snapshot
     return None
 
 
@@ -235,23 +208,11 @@ def pull(key: str) -> Path:
         target.mkdir(parents=True, exist_ok=True)
         return Path(hf_hub_download(entry.repo, entry.filename, local_dir=str(target)))
 
-    if entry.fmt == GGML:
-        from huggingface_hub import hf_hub_download
+    from huggingface_hub import hf_hub_download
 
-        target = root / "ggml"
-        target.mkdir(parents=True, exist_ok=True)
-        downloaded = hf_hub_download(entry.repo, entry.filename, local_dir=str(target))
-        return Path(downloaded)
-
-    try:
-        from faster_whisper.utils import download_model
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            f"{key} is a CTranslate2 model, which needs faster-whisper. "
-            f"Run: uv tool install --reinstall omavoi[cuda]"
-        ) from exc
-
-    return Path(download_model(entry.repo, cache_dir=str(root), local_files_only=False))
+    target = root / "ggml"
+    target.mkdir(parents=True, exist_ok=True)
+    return Path(hf_hub_download(entry.repo, entry.filename, local_dir=str(target)))
 
 
 def remove(key: str) -> bool:
@@ -260,16 +221,12 @@ def remove(key: str) -> bool:
         raise ValueError(f"unknown model {key!r}")
     if not owned_by_us(key):
         return False
-    if entry.kind == LLM or entry.fmt == GGML:
-        path = local_path(key)
-        if path is None:
-            return False
-        path.unlink()
-        return True
-    target = model_root() / _hf_dirname(entry.repo)
-    if not target.exists():
+    # One file each, ggml and llm alike. The directory-shaped case was the
+    # ct2 snapshot layout, and there are no ct2 models.
+    path = local_path(key)
+    if path is None:
         return False
-    shutil.rmtree(target)
+    path.unlink()
     return True
 
 

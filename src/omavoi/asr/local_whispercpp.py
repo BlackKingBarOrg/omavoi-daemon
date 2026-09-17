@@ -1,8 +1,8 @@
 """whisper.cpp backend — the portable GPU path.
 
-CTranslate2 is CUDA-only, so NVIDIA is the only GPU faster-whisper can use.
-whisper.cpp runs on Vulkan, which covers NVIDIA, AMD and Intel with one
-build; on Arch that is `pacman -S whisper-cpp ggml-vulkan`, because ggml
+The only local engine there is. whisper.cpp runs on Vulkan, which covers
+NVIDIA, AMD and Intel with one build and falls back to CPU where there is
+no GPU; on Arch that is `pacman -S whisper-cpp ggml-vulkan`, because ggml
 loads its compute backends as plugins.
 
 The model has to stay resident or push-to-talk latency is dominated by

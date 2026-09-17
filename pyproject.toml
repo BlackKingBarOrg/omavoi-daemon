@@ -9,28 +9,15 @@ license = { text = "MIT" }
 dependencies = [
     "numpy>=1.26",
     # These four were imported by the code but never declared: httpx and
-    # huggingface-hub happened to arrive as faster-whisper's transitive
-    # dependencies, and evdev and pypinyin arrived not at all — a fresh
-    # install had no hotkey reader and no phonetic name matching.
+    # huggingface-hub happened to arrive as transitive dependencies of the
+    # faster-whisper engine that used to be here, and evdev and pypinyin
+    # arrived not at all — a fresh install had no hotkey reader and no
+    # phonetic name matching. With that engine gone they are the whole of
+    # what omavoi needs.
     "httpx>=0.27",
     "huggingface-hub>=0.24",
     "evdev>=1.7",
     "pypinyin>=0.53",
-]
-
-[project.optional-dependencies]
-# faster-whisper is one of three speech backends and not the default one. It
-# drags in CTranslate2, PyAV and onnxruntime — about 300 MB of the 400 MB a
-# plain install used to weigh, for an engine that only runs on NVIDIA. Both of
-# its import sites are inside functions, so this costs no code.
-ct2 = [
-    "faster-whisper>=1.1.0",
-]
-# CT2 needs cuDNN 9 / cuBLAS at runtime; Omarchy ships neither system-wide.
-cuda = [
-    "faster-whisper>=1.1.0",
-    "nvidia-cublas-cu12>=12.8",
-    "nvidia-cudnn-cu12>=9.1",
 ]
 
 [project.scripts]
@@ -74,7 +61,9 @@ ignore = [
     #   SIM105   a bare try/except pass reads plainer than contextlib.suppress
     #            in the probes, where the failure is the answer
     #   B007     an unused loop name is sometimes the clearer name
-    #   PLW0603  one module-level memo in cudaenv, deliberately global
+    #   PLW0603  gpu.py's two half-second caches, which are module-level
+    #            memos and have to be assigned from the function that fills
+    #            them
     #   DTZ006   history timestamps are local time on purpose, for a human
     "PLW0108", "PLW2901", "SIM105", "B007", "PLW0603", "DTZ006",
     "PERF102", "PERF401", "SIM102", "UP031",
