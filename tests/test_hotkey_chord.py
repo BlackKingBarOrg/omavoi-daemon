@@ -257,3 +257,66 @@ def test_a_combination_passes_the_set_time_check(home):
     assert _why_not_that_hotkey("hotkey.key", "SUPER+V") == ""
     assert _why_not_that_hotkey("hotkey.key", "CTRL+NOTAKEY")
     assert _why_not_that_hotkey("hotkey.key", "CTRL+CTRL")
+
+
+# -- naming a key by the character on it -----------------------------------
+
+
+def test_a_key_nothing_emits_is_refused(home, monkeypatch):
+    """KEY_QUESTION is a real evdev code and no keyboard has it, because ?
+    is Shift and some other key. The name resolved, so `config set
+    hotkey.key CTRL+QUESTION` was accepted and the daemon bound nothing.
+    """
+    from omavoi import hotkey
+    from omavoi.commands import keys as keys_mod
+
+    monkeypatch.setattr(hotkey, "absent_parts",
+                        lambda chord, explicit=None: ["QUESTION"]
+                        if "QUESTION" in chord.name else [])
+    why = keys_mod._why_not_that_hotkey("hotkey.key", "CTRL+QUESTION")
+    assert why and "QUESTION" in why
+    assert "hotkey capture" in why, "it must say how to find the right key"
+    assert keys_mod._why_not_that_hotkey("hotkey.key", "CTRL+SLASH") == ""
+
+
+def test_nothing_is_refused_when_nothing_can_be_proven(home, monkeypatch):
+    """A shell without the `input` group can open no device, so it knows
+    nothing about which keys exist — and refusing there would be the sixth
+    time this program answered for the checking process instead of the one
+    that runs."""
+    from omavoi import hotkey
+    from omavoi.commands import keys as keys_mod
+
+    monkeypatch.setattr(hotkey, "absent_parts", lambda chord, explicit=None: [])
+    assert keys_mod._why_not_that_hotkey("hotkey.key", "CTRL+QUESTION") == ""
+
+
+def test_absent_parts_proves_nothing_when_it_can_open_nothing(home, tmp_path):
+    """Its whole contract: [] means "cannot tell", never "the key is fine"."""
+    from omavoi.hotkey import absent_parts, parse_chord
+
+    missing = tmp_path / "no-such-device"
+    assert absent_parts(parse_chord("CTRL+QUESTION"), [str(missing)]) == []
+
+
+def test_naming_a_key_by_its_character_says_so(home):
+    """`CTRL+?` said only "unknown key name '?'", which is no help to
+    someone reading the character printed on the key."""
+    from omavoi.commands.keys import _why_not_that_hotkey
+
+    why = _why_not_that_hotkey("hotkey.key", "CTRL+?")
+    assert "physical key" in why
+    assert "every layout" in why, "the answer is layout-dependent, not a table"
+    # An ordinary typo gets the ordinary message, without the lecture.
+    plain = _why_not_that_hotkey("hotkey.key", "CTRL+NOTAKEY")
+    assert "physical key" not in plain
+
+
+@pytest.mark.parametrize("name,looks", [
+    ("?", True), ("+", True), (":", True), ("~", True),
+    ("A", False), ("F9", False), ("SLASH", False), ("RIGHTALT", False),
+])
+def test_what_counts_as_naming_a_character(name, looks):
+    from omavoi.commands.keys import _looks_like_a_character
+
+    assert _looks_like_a_character(name) is looks

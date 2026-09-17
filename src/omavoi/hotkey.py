@@ -241,6 +241,40 @@ def _explain_one(codes: tuple[int, ...], name: str,
     return f"no readable device emits {name}"
 
 
+def absent_parts(chord: Chord, explicit: list[str] | None = None) -> list[str]:
+    """The parts of this chord that no *readable* keyboard emits.
+
+    Deliberately narrower than explain_missing, which answers "why can this
+    not be read" and is right to blame the input group. This answers only
+    "can we prove this key is not on any keyboard we were able to open", and
+    returns nothing when we could open none — because a shell without the
+    group can prove nothing, and refusing a perfectly good key there is the
+    mistake this program has made in five other places.
+
+    KEY_QUESTION is why this exists. It is a real evdev code, so the name
+    resolves and `config set hotkey.key CTRL+QUESTION` was accepted — and no
+    keyboard in the world emits it, because ? is Shift and the SLASH key.
+    """
+    from evdev import InputDevice, ecodes, list_devices
+
+    emits: set[int] = set()
+    opened = 0
+    for path in explicit or list_devices():
+        try:
+            dev = InputDevice(path)
+        except (OSError, PermissionError):
+            continue
+        try:
+            opened += 1
+            emits |= set(dev.capabilities().get(ecodes.EV_KEY, []))
+        finally:
+            dev.close()
+    if not opened:
+        return []
+    return [name for part, name in zip(chord.parts, chord.name.split("+"), strict=True)
+            if not any(code in emits for code in part)]
+
+
 def find_devices(chord: Chord, explicit: list[str] | None = None) -> list[Any]:
     """Every readable device that can emit any part of this chord.
 

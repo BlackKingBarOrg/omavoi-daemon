@@ -14,6 +14,23 @@ from typing import Any
 from .. import config, paths
 from ..term import BOLD, DIM, GREEN, RED, RESET
 
+# What to say when someone names a key by the character printed on it.
+# evdev names the physical key: ? is a character you reach with Shift, and
+# which physical key that is depends on the layout — Shift+/ on a US
+# keyboard, Shift+ß on a German one, Shift+, on AZERTY. So the answer is not
+# a table here, which would be the US one dressed as a fact; it is the
+# command that reads the key you actually press.
+_CHARACTER_HINT = (
+    "evdev names the physical key, not the character on it, and a character "
+    "you reach with Shift is on a different key on every layout. "
+    "`omavoi hotkey capture` names whichever key you press."
+)
+
+
+def _looks_like_a_character(name: str) -> bool:
+    """A single glyph, or a name for one — ?, QUESTION, +, PLUS."""
+    return len(name) == 1 and not name.isalnum()
+
 
 def _why_not_that_hotkey(key: str, value: str) -> str:
     """Why this key name will not work, or "" if it will.
@@ -24,14 +41,40 @@ def _why_not_that_hotkey(key: str, value: str) -> str:
     """
     if str(key) != "hotkey.key" or not str(value).strip():
         return ""
-    from ..hotkey import HotkeyUnavailable, parse_chord
+    from ..hotkey import HotkeyUnavailable, absent_parts, parse_chord
 
     try:
-        parse_chord(value)
+        chord = parse_chord(value)
     except HotkeyUnavailable as exc:
+        # `CTRL+?` said only "unknown key name '?'", which is true and no
+        # help at all to someone who is looking at the key and reading the
+        # character printed on it.
+        parts = [p.strip().upper() for p in str(value).split("+") if p.strip()]
+        if any(_looks_like_a_character(p) for p in parts):
+            return f"{exc}. {_CHARACTER_HINT}"
         return str(exc)
     except ModuleNotFoundError:
         return ""
+
+    # A name can resolve and still be a key no keyboard has. KEY_QUESTION is
+    # a real evdev code — ? is Shift and the SLASH key, so nothing emits it —
+    # and this used to accept CTRL+QUESTION and leave the daemon binding
+    # nothing. Only when devices could actually be opened: a shell without
+    # the `input` group can prove nothing, and refusing there would be the
+    # sixth time this program answered for the checking process instead of
+    # the one that runs.
+    try:
+        absent = absent_parts(chord)
+    except ModuleNotFoundError:
+        return ""
+    if absent:
+        # A name that resolves and that nothing emits is almost always a
+        # character rather than a key: KEY_QUESTION is a real code and no
+        # keyboard has it, because ? is Shift and some other key.
+        which = ", ".join(absent)
+        return (f"no keyboard here emits {which}"
+                + (f" (in {chord.name})" if chord.is_combo else "")
+                + f". {_CHARACTER_HINT}")
     return ""
 
 
