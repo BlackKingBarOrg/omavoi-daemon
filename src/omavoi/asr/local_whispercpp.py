@@ -272,9 +272,11 @@ class WhisperCppBackend:
             "beam_size": str(self.beam_size),
         }
         # whisper.cpp defaults its language to English rather than detecting
-        # it, unlike every other whisper binding. Left implicit, Chinese comes
-        # back as invented English — same weights, same audio, different
-        # answer from the CUDA backend. So say "auto" out loud.
+        # it, unlike every other whisper binding. Left implicit, anything
+        # that is not English comes back as invented English — the same
+        # weights and the same audio as the faster-whisper engine that used
+        # to sit beside this one, and a different answer. So say "auto" out
+        # loud, and a mode that names a language gets that one.
         data["language"] = lang or "auto"
         if seeded:
             data["prompt"] = seeded

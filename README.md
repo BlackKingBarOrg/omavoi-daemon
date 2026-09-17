@@ -89,12 +89,16 @@ out falls through to the text it was given — a slow model degrades your
 dictation, it never swallows it.
 
 **Two kinds of correction.** A dictionary rule (`heard -> meant`) needs you to
-know what the model got wrong. For a proper noun you never will, and for
-Chinese the manglings are an open set of homophones — 李文渊 comes back as
-李文远, 李闻渊, 里闻鸢. So names are written once, correctly, seeded into the
-decoder prompt, and matched afterwards by sound: pinyin for CJK, a consonant
-skeleton for Latin. Sound matching is the one feature here that can damage text
-that was already right, so it stays inert until its dry run has been reviewed.
+know what the model got wrong. For a proper noun you never will: *Søren* comes
+back as Soren, Severin, so run; and in Chinese the manglings are an open set of
+homophones — 李文渊 comes back as 李文远, 李闻渊, 里闻鸢. So names are written
+once, correctly, seeded into the decoder prompt, and matched afterwards by
+sound: pinyin for CJK, a consonant skeleton for Latin. A name with too little
+sound in it is seeded but never matched — *Bo* and *Bob* both reduce to the
+skeleton `B`, which is also by, bay and boy — and the same goes for a
+single-syllable Chinese name. Sound matching is the one feature here that can
+damage text that was already right, so it stays inert until its dry run has
+been reviewed.
 
 **Injection knows about XWayland.** `wtype` installs a keymap for its virtual
 keyboard that X11 clients never receive, so they decode its keycodes against
