@@ -167,7 +167,14 @@ def cmd_inject(args: argparse.Namespace) -> int:
     print(f"  x11 focus    {xfocus}")
     print(f"  route        {result.method}"
           + (f" (fell back from {cfg['inject']['method']})" if result.fell_back else ""))
-    print(f"  paste via    {cfg['inject'].get('paste_method', 'shortcut')}")
+    # What was actually used, which the result carries. This printed the
+    # configured value, and the configured value is "" — "follow the window"
+    # — which it rendered as "shortcut". On an X11 window the route is
+    # xdotool, so the one line in this command whose job is to say how the
+    # keystroke was sent was naming the other one.
+    print(f"  paste via    {result.paste_via or '—'}"
+          + ("" if result.paste_via
+             else f"  {DIM}(no paste: the route was {result.method}){RESET}"))
     print(f"  lines        {len(text.splitlines())}")
     mark = f"{GREEN}ok{RESET}" if result.ok else f"{RED}failed{RESET}"
     print(f"  result       {mark} in {result.seconds:.2f}s"

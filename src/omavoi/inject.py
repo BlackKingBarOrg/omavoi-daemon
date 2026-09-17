@@ -74,12 +74,16 @@ class Injector:
         inject = cfg["inject"]
         self.method: str = inject.get("method", "auto")
         self.clipboard_classes = [c.lower() for c in inject.get("clipboard_classes", [])]
-        self.restore_after = float(inject.get("restore_clipboard_after", 1.5))
+        self.restore_after = float(inject.get("restore_clipboard_after", 4.0))
         self.wtype_delay_ms = int(inject.get("wtype_delay_ms", 0))
         self.default_paste_key: str = inject.get("paste_key", "CTRL+V")
         self.paste_method: str = inject.get("paste_method", "") or ""
         self.xdotool_delay_ms = int(inject.get("xdotool_delay_ms", 12))
-        self.paste_settle_ms = int(inject.get("paste_settle_ms", 60))
+        # 150, not the 60 this used to say: XWayland mirrors the Wayland
+        # selection lazily. The number lives in config.DEFAULTS with the
+        # reason beside it, and a second, different one here taught
+        # anyone reading this file the wrong answer.
+        self.paste_settle_ms = int(inject.get("paste_settle_ms", 150))
 
     # -- routing -----------------------------------------------------------
 

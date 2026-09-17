@@ -131,3 +131,61 @@ def test_the_forced_mode_from_config_reaches_the_daemon():
     assert 'self.forced_mode = str(cfg["hotkey"].get("force_mode"' in src, (
         "the daemon is back to hardcoding forced_mode"
     )
+
+
+def test_a_numeric_fallback_agrees_with_the_shipped_default():
+    """`cfg.get("key", 60)` where DEFAULTS says 150 documents two answers.
+
+    The fallback never fires — config.load merges DEFAULTS into everything —
+    so this is not a behaviour bug; it is the file saying one thing while the
+    program does another, which is the shape everything else here turns out
+    to be. Someone reading inject.py learned that the paste settle was 60 ms.
+    It is 150, and the reason is written beside the 150.
+
+    Numbers only. A string fallback is usually a display marker for absence —
+    "?" for an unknown device, "-" for a method that was never chosen — and
+    those are deliberately not the shipped value.
+    """
+    numbers = {}
+    for leaf, dotted, value in _walk(config.DEFAULTS):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        numbers.setdefault(leaf, []).append((dotted, value))
+
+    wrong = []
+    for path in sorted(SRC.rglob("*.py")):
+        if path.name == "config.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "get"
+                    and len(node.args) == 2
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                continue
+            entries = numbers.get(node.args[0].value)
+            # Skip a leaf name that appears under more than one section: which
+            # default was meant is then genuinely ambiguous.
+            if not entries or len(entries) != 1:
+                continue
+            try:
+                fallback = ast.literal_eval(node.args[1])
+            except (ValueError, SyntaxError):
+                continue
+            if isinstance(fallback, bool) or not isinstance(fallback, (int, float)):
+                continue
+            dotted, shipped = entries[0]
+            if float(shipped) != float(fallback):
+                wrong.append(f"{path.name}:{node.lineno} {dotted} "
+                             f"ships {shipped!r}, falls back to {fallback!r}")
+    assert not wrong, "\n".join(wrong)
+
+
+def _walk(node, prefix=""):
+    for key, value in node.items():
+        dotted = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            yield from _walk(value, dotted)
+        else:
+            yield key, dotted, value
