@@ -30,7 +30,7 @@ def why_unavailable(name: str) -> str:
 
         if find_server() is None:
             return ("whisper.cpp is not installed. "
-                    "Run: sudo pacman -S --needed whisper-cpp ggml-cpu ggml-vulkan")
+                    "Run: sudo pacman -S --needed whisper-cpp ggml ggml-vulkan")
         return ""
     if name == "api":
         from .. import secrets

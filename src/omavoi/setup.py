@@ -174,10 +174,20 @@ def check(cfg: dict[str, Any]) -> Report:
         steps.append(Step(
             "engine", "Speech engine (Vulkan)", ok,
             detail=detail,
-            command="sudo pacman -S --needed whisper-cpp ggml-cpu ggml-vulkan",
+            command="sudo pacman -S --needed whisper-cpp ggml ggml-vulkan",
             needs_root=True,
-            note="About 10 MB. ggml-cpu is not optional: the GPU plugin alone "
-                 "cannot satisfy whisper's CPU tensors."
+            # `ggml` and not `ggml-cpu`. Arch once shipped the CPU backend as
+            # its own optional package and this said so; it is folded into
+            # `ggml` now, which declares `provides ggml-cpu` and `conflicts
+            # ggml-cpu` both. Naming the old one pins a stale 0.21.0 split
+            # package that cannot coexist with the `ggml` every one of these
+            # depends on, and pacman rejects the whole transaction with
+            # "unresolvable package conflicts". It is also no longer possible
+            # to be missing: whisper-cpp depends on it.
+            note="About 10 MB. ggml carries the CPU backend, which whisper "
+                 "needs for the tensors it does not offload — it comes with "
+                 "whisper-cpp either way, and is listed so the reason is "
+                 "visible."
                  + ("" if has_gpu else " Swap ggml-vulkan for ggml-cuda or "
                     "ggml-hip if you would rather use the vendor backend."),
         ))

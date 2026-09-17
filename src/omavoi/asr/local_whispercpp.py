@@ -56,7 +56,7 @@ def _explain(output: bytes) -> str:
         if "GGML_ASSERT(device)" in line:
             return (line + "\n  No ggml compute backend could be resolved. The GPU "
                     "plugin alone is not enough:\n"
-                    "  sudo pacman -S --needed ggml-cpu")
+                    "  sudo pacman -S --needed ggml")
     assertion = [line for line in lines if "GGML_ASSERT" in line or "error" in line.lower()]
     return "\n".join(assertion[-3:] or lines[-8:])
 
@@ -119,7 +119,7 @@ class WhisperCppBackend:
         if not binary:
             raise NotReady(
                 "no whisper.cpp server binary found. On Arch/Omarchy: "
-                "sudo pacman -S --needed whisper-cpp ggml-cpu ggml-vulkan"
+                "sudo pacman -S --needed whisper-cpp ggml ggml-vulkan"
             )
         path = models.local_path(self.model_key)
         if path is None:

@@ -46,7 +46,7 @@ pieces:
 
 ```bash
 # 1. the speech engine (Vulkan runs on NVIDIA, AMD and Intel alike)
-sudo pacman -S --needed whisper-cpp ggml-cpu ggml-vulkan
+sudo pacman -S --needed whisper-cpp ggml ggml-vulkan
 
 # 2. the daemon. `omavoi` is not on PyPI; install it from this repository
 uv tool install git+https://github.com/BlackKingBarOrg/omavoi
@@ -57,10 +57,18 @@ omavoi setup
 # 4. the systemd user unit, which ships with the plugin, not with the package
 ```
 
-`ggml-cpu` is **not** optional. Arch ships ggml's compute backends as separate
-packages, and whisper still asks for a CPU device for the tensors it does not
-offload. With only the GPU plugin installed it aborts part-way through loading
-the model on `GGML_ASSERT(device)`, and the backtrace says nothing useful.
+`ggml` carries the CPU backend, and whisper asks for a CPU device for the
+tensors it does not offload — with only the GPU plugin loaded it aborts
+part-way through loading the model on `GGML_ASSERT(device)`, and the backtrace
+says nothing useful. It is a hard dependency of `whisper-cpp`, so it arrives
+either way; it is written out so the reason is visible.
+
+Ask for `ggml`, never `ggml-cpu`. Arch used to ship the CPU backend as its own
+package and that is what this line said for a while. It is folded into `ggml`
+now, which declares both `provides ggml-cpu` and `conflicts ggml-cpu`, so
+naming the old one pins a stale 0.21.0 split package that cannot coexist with
+the `ggml` these all depend on — and pacman refuses the whole transaction with
+`unresolvable package conflicts`.
 
 The desktop pieces live in
 [omavoi-shell-plugin](https://github.com/BlackKingBarOrg/omavoi-shell-plugin).
