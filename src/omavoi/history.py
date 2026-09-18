@@ -8,12 +8,14 @@ is something you can look at instead of something you re-say and hope.
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
 import time
 import wave
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -37,6 +39,50 @@ def _write_wav(path: Path, samples: Any, rate: int) -> None:
     # no fd to hand it. The window is one write long and the directory is
     # 0700, which closes it from the outside.
     paths.private_file(path)
+
+
+def entry_id(entry: dict[str, Any]) -> str:
+    """The id a take is addressed by, derived when the line has not got one.
+
+    `record` has written one since the beginning, but this file is appended to
+    and never migrated, so it can be older than the code reading it -- and a
+    take with no id is one the console can show and not delete. The derivation
+    is `record`'s own, so a line written before this and one written after
+    answer to the same string.
+    """
+    if entry.get("id"):
+        return str(entry["id"])
+    return f"{int(float(entry.get('ts') or 0) * 1000):x}"
+
+
+@contextmanager
+def _locked() -> Iterator[None]:
+    """Hold the history lock across a read-everything, write-a-replacement.
+
+    An append needs nothing. The trim after it and `remove` below are both a
+    full rewrite, and they run in different processes: the daemon trims as a
+    take finishes, while the console deletes the take you right-clicked. Left
+    unsynchronised, a take that finishes between the read and the rename is
+    not in the file afterwards.
+
+    The lock is its own file rather than the history itself because the
+    rewrite ends in a rename: flock follows the inode, so two processes that
+    lock "the history file" either side of a replacement hold two unrelated
+    locks and neither waits for the other.
+
+    Not reentrant -- flock conflicts with a second open file description even
+    in the same process -- so nothing under it takes it again.
+    """
+    path = paths.history_lock()
+    paths.private_dir(path.parent)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        # Closing releases it, and so does dying while holding it -- which a
+        # lock represented by the file's existence would not.
+        os.close(fd)
 
 
 class History:
@@ -69,10 +115,13 @@ class History:
         # whatever umask said, which on Omarchy is 0644.
         paths.private_dir(self.path.parent)
         paths.private_file(self.path)
-        with paths.open_private(self.path, "a") as fh:
-            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-        self._trim()
+        # Taken once around both: the append does not need it, the trim does,
+        # and a delete landing between the two would be rewriting a file that
+        # is about to be replaced by a rewrite of the version before it.
+        with _locked():
+            with paths.open_private(self.path, "a") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            self._trim()
         return entry
 
     def _trim(self) -> None:
@@ -82,12 +131,7 @@ class History:
             return
         if len(lines) > self.keep:
             kept = lines[-self.keep :]
-            # The replacement carries its own mode, so this has to be
-            # private too or a trim undoes the line above.
-            tmp = self.path.with_suffix(".jsonl.tmp")
-            with paths.open_private(tmp, "w") as fh:
-                fh.write("\n".join(kept) + "\n")
-            tmp.replace(self.path)
+            self._write_lines(kept)
             lines = kept
 
         if self.keep_audio <= 0 or not self.audio_dir.is_dir():
@@ -114,6 +158,107 @@ class History:
                 # _write_wav. This pass already visits every one of them.
                 paths.private_file(path)
 
+    def _write_lines(self, lines: list[str]) -> None:
+        """Replace the file with these lines, atomically and privately.
+
+        The replacement carries its own mode, so it has to be created private
+        or a rewrite undoes the tightening `record` does on the way past.
+        """
+        tmp = self.path.with_suffix(".jsonl.tmp")
+        with paths.open_private(tmp, "w") as fh:
+            for line in lines:
+                fh.write(line + "\n")
+        tmp.replace(self.path)
+
+    def _drop_audio(self, entries: list[dict[str, Any]]) -> int:
+        """The recordings those takes name, where they are still there.
+
+        `_trim` would sweep them at the next take anyway -- it keeps only the
+        WAVs the last `keep_audio` entries name -- but "delete this" should
+        not leave your voice on the disk until the next time you dictate.
+        """
+        gone = 0
+        for entry in entries:
+            wav = entry.get("wav")
+            if not wav:
+                continue
+            path = Path(str(wav))
+            # Only inside the recordings directory. The path comes out of a
+            # file this program rewrites, and unlinking whatever it says is a
+            # far larger promise than the one being kept here.
+            if path.parent != self.audio_dir:
+                continue
+            try:
+                path.unlink()
+                gone += 1
+            except OSError:
+                pass
+        return gone
+
+    def remove(self, ids: Iterable[str]) -> dict[str, Any]:
+        """Delete these takes, and the recordings they point at.
+
+        By id rather than by position: the console lists the last forty takes
+        newest first and a take can finish while you are reading them, so an
+        index names a different row by the time it arrives.
+        """
+        wanted = {str(i) for i in ids if str(i)}
+        if not wanted:
+            return {"removed": 0, "audio": 0, "missing": []}
+
+        kept: list[str] = []
+        removed: list[dict[str, Any]] = []
+        with _locked():
+            try:
+                lines = self.path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                return {"removed": 0, "audio": 0, "missing": sorted(wanted)}
+            for line in lines:
+                if not line.strip():
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    # Unaddressable, so undeletable: keeping it is the only
+                    # answer that cannot delete the wrong take.
+                    kept.append(line)
+                    continue
+                if isinstance(entry, dict) and entry_id(entry) in wanted:
+                    removed.append(entry)
+                else:
+                    kept.append(line)
+            if removed:
+                self._write_lines(kept)
+
+        return {"removed": len(removed), "audio": self._drop_audio(removed),
+                "missing": sorted(wanted - {entry_id(e) for e in removed})}
+
+    def clear(self) -> dict[str, Any]:
+        """Every take, and every recording, gone.
+
+        The whole recordings directory rather than the files the entries name:
+        a take whose audio `_trim` already swept still names it, and audio
+        whose entry was trimmed away is named by nothing at all.
+        """
+        with _locked():
+            try:
+                lines = [ln for ln in self.path.read_text(encoding="utf-8").splitlines()
+                         if ln.strip()]
+            except OSError:
+                lines = []
+            if lines:
+                self._write_lines([])
+
+        audio = 0
+        if self.audio_dir.is_dir():
+            for path in self.audio_dir.glob("*.wav"):
+                try:
+                    path.unlink()
+                    audio += 1
+                except OSError:
+                    pass
+        return {"removed": len(lines), "audio": audio}
+
     def entries(self, limit: int = 20) -> list[dict[str, Any]]:
         return list(self.iter_entries())[-limit:]
 
@@ -126,9 +271,16 @@ class History:
                 if not line:
                     continue
                 try:
-                    yield json.loads(line)
+                    entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
+                if not isinstance(entry, dict):
+                    continue
+                # Filled in rather than left absent: every reader addresses a
+                # take by this, and one written before ids existed is
+                # otherwise a row that cannot be deleted.
+                entry["id"] = entry_id(entry)
+                yield entry
 
     def last(self) -> dict[str, Any] | None:
         entries = self.entries(1)

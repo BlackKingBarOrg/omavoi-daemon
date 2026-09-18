@@ -61,7 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_status)
 
-    p = sub.add_parser("history", help="recent takes")
+    p = sub.add_parser("history", help="recent takes, and deleting them")
+    # Optional, so `omavoi history -n 40 --json` -- what the console runs on
+    # every refresh -- still means the listing it has always meant.
+    p.add_argument("action", nargs="?", default="list", choices=["list", "rm", "clear"])
+    p.add_argument("ids", nargs="*", help="for rm: the id each take is listed with")
     p.add_argument("-n", "--number", type=int, default=10)
     p.add_argument("-v", "--verbose", action="store_true",
                    help="include per-segment confidences and post-processing")

@@ -241,7 +241,9 @@ see below.
 The history and the log are the transcript of everything you have dictated,
 so they are as private as the key file. `history.enabled = false` turns the
 first off; `history.keep_audio = 0` stops storing audio. An install from
-before this was set is tightened on its next take.
+before this was set is tightened on its next take. One take goes with
+`omavoi history rm <id>` — or a right-click in the console's history tab —
+and it takes its recording with it; `omavoi history clear` takes the lot.
 
 Note that your shell still cannot read a device after this, so
 `omavoi hotkey capture` — which reads a keypress in the foreground — will not
@@ -258,6 +260,8 @@ omavoi status [--json]        state, for a bar module
 omavoi record start|stop|toggle|cancel
 
 omavoi history -n 10 -v       recent takes with diagnostics
+omavoi history rm ID [ID...]  delete those takes, and their recordings
+omavoi history clear          delete all of them
 omavoi last [--raw|--json]    everything about the last one
 omavoi stats                  empty rate, RTF, input level
 

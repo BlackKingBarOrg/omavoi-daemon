@@ -10,6 +10,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from typing import Any
 
 from .. import __version__, config, ipc, models, paths
@@ -98,10 +99,60 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _takes(n: int) -> str:
+    return f"{n} take" if n == 1 else f"{n} takes"
+
+
+def _history_rm(hist: Any, args: argparse.Namespace) -> int:
+    ids = [str(i) for i in (getattr(args, "ids", None) or [])]
+    if not ids:
+        print(f"{RED}usage: omavoi history rm <id> [<id> ...]{RESET}", file=sys.stderr)
+        print(f"{DIM}the id of each take is in `omavoi history --json`{RESET}", file=sys.stderr)
+        return 1
+
+    report = hist.remove(ids)
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        if report["removed"]:
+            n = report["audio"]
+            audio = f", and {n} recording{'' if n == 1 else 's'}" if n else ""
+            print(f"{GREEN}removed{RESET} {_takes(report['removed'])}{audio}")
+        for missing in report["missing"]:
+            # stderr, not stdout: this is why the exit code is non-zero, and
+            # the console shows what a refused command said on its stderr.
+            print(f"no take with id {missing}", file=sys.stderr)
+    # Nothing removed is a failure, as it is for `dict rm`: the caller asked
+    # for something that was not there.
+    return 0 if report["removed"] else 1
+
+
+def _history_clear(hist: Any, args: argparse.Namespace) -> int:
+    """Every take and every recording. There is no undo, and none is offered:
+    the console asks before calling this, and a typed command is its own
+    intent."""
+    report = hist.clear()
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif report["removed"] or report["audio"]:
+        print(f"{GREEN}cleared{RESET} {_takes(report['removed'])} "
+              f"and {report['audio']} recordings")
+    else:
+        print(f"{DIM}no takes recorded yet{RESET}")
+    return 0
+
+
 def cmd_history(args: argparse.Namespace) -> int:
     from ..history import History
 
-    entries = History(config.load()).entries(args.number)
+    hist = History(config.load())
+    action = getattr(args, "action", "list") or "list"
+    if action == "rm":
+        return _history_rm(hist, args)
+    if action == "clear":
+        return _history_clear(hist, args)
+
+    entries = hist.entries(args.number)
     if args.json:
         print(json.dumps(entries, ensure_ascii=False, indent=2))
         return 0

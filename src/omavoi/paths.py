@@ -92,6 +92,15 @@ def history_file() -> Path:
     return state_dir() / "history.jsonl"
 
 
+def history_lock() -> Path:
+    """What a rewrite of the history holds while it replaces the file.
+
+    Separate from the history itself because the rewrite renames over it, and
+    a lock taken on the file follows the inode rather than the name.
+    """
+    return state_dir() / "history.lock"
+
+
 def log_file() -> Path:
     return state_dir() / "omavoi.log"
 
