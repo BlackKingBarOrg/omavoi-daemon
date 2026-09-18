@@ -14,6 +14,10 @@ from typing import Any
 from .. import config, paths
 from ..term import BOLD, DIM, GREEN, RED, RESET
 
+# The plugin's installer, which is also the thing that starts the daemon
+# through newgrp for a login that predates its own group membership.
+FIX = "~/.config/omarchy/plugins/ai.bkblab.omavoi/install.sh"
+
 # What to say when someone names a key by the character printed on it.
 # evdev names the physical key: ? is a character you reach with Shift, and
 # which physical key that is depends on the layout — Shift+/ on a US
@@ -247,17 +251,20 @@ def cmd_hotkey(args: argparse.Namespace) -> int:
         if not r.get("group_listed"):
             line(False, "you are not in the `input` group, so not one keyboard "
                         "can be opened")
-            print(f"{DIM}  sudo usermod -aG input $USER   then log out and back in{RESET}")
+            print(f"{DIM}  sudo usermod -aG input $USER   then re-run "
+                  f"{FIX} — it starts the daemon with the group at once. "
+                  f"Or log out and back in.{RESET}")
             return 1
         if not r.get("group_held"):
             line(False, "you are in the `input` group, but this login started "
                         "before that")
-            print(f"{DIM}  log out and back in — a group is granted at login "
-                  f"and cannot be added to a session already running.{RESET}")
-            print(f"{DIM}  To avoid that: start the daemon through `newgrp "
-                  f"input`, which is setuid root and re-reads /etc/group, so it "
-                  f"gets the group without a new login. README: \"the input "
-                  f"group\".{RESET}")
+            # A group is granted at login and cannot be added to a session
+            # already running -- but the daemon need not wait for the session.
+            print(f"{DIM}  re-run {FIX}: it starts the daemon through `newgrp "
+                  f"input`, which is setuid root and re-reads /etc/group, so "
+                  f"the daemon has the group now. Without the plugin, the same "
+                  f"override by hand is in the README under \"the input "
+                  f"group\". Logging out and back in also works.{RESET}")
             return 1
 
         dp = r.get("devices_problem") or ""

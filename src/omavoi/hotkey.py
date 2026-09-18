@@ -248,10 +248,13 @@ def _explain_one(codes: tuple[int, ...], name: str,
         holds = entry.gr_gid in os.getgroups()
         if listed and not holds:
             return ("you are in the `input` group but this process started "
-                    "before that took effect — log out and back in")
+                    "before that took effect — re-run the plugin's install.sh, "
+                    "which starts the daemon through newgrp, or log out and "
+                    "back in")
         if not listed:
             return ("you are not in the `input` group: sudo usermod -aG input "
-                    "$USER, then log out and back in")
+                    "$USER, then re-run the plugin's install.sh or log out and "
+                    "back in")
         return f"{denied} input devices exist but none could be opened"
 
     if opened:
@@ -346,8 +349,9 @@ def capture(timeout: float = 10.0, explicit: list[str] | None = None) -> str:
             dev.close()
     if not devices:
         raise HotkeyUnavailable(
-            "no readable input devices; membership of the `input` group takes "
-            "effect at your next login"
+            "no readable input devices; the `input` group is granted at login "
+            "— re-run the plugin's install.sh to start the daemon through "
+            "newgrp, or log out and back in"
         )
 
     by_fd = {dev.fd: dev for dev in devices}

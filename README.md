@@ -39,7 +39,7 @@ weights:
 omarchy plugin add https://github.com/BlackKingBarOrg/omavoi-shell-plugin --enable --yes
 ```
 
-Then open the console with `SUPER + ALT + V`.
+Then open the console by clicking the Omavoi module in the bar. (`SUPER + ALT + V` is bound by the last step of setup, so it works from then on.)
 
 If you would rather do it by hand, or you only want the daemon and no desktop
 pieces:
@@ -167,27 +167,37 @@ the session you are sitting in still does not have it, and neither does
 anything `systemd --user` starts — including the daemon. Logging out and back
 in is the ordinary fix.
 
-If logging out is expensive — long-running services, a session you would
-rather keep — the daemon can be started through `newgrp`, which is setuid
-root and re-reads `/etc/group`, so it acquires the group without a new login
-and without a password (you are already a member on file):
+The plugin's `install.sh` — the last step of the first-run screen — does not
+make you. When the login lacks the group and `/etc/group` has you, it starts
+the daemon through `newgrp`, which is setuid root and re-reads `/etc/group`,
+so the daemon has the group at once with no new login and no password (you
+are a member on file). It is a runtime-only override under
+`$XDG_RUNTIME_DIR/systemd/user/omavoid.service.d/`, which logind clears when
+the session ends — by which time the next login has the group and the
+override would only be noise. A login that already has the group gets none.
+
+For a daemon-only install with no plugin, the same override by hand:
 
 ```sh
-d=/run/user/$(id -u)/systemd/user/omavoid.service.d
+d=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/systemd/user/omavoid.service.d
 mkdir -p "$d"
-cat > "$d/10-input-group.conf" <<'CONF'
+cat > "$d/10-input-group.conf" <<CONF
 [Service]
 ExecStart=
-ExecStart=/bin/sh -c 'echo "exec omavoi daemon" | newgrp input'
+ExecStart=/usr/bin/newgrp input
+StandardInput=data
+StandardInputText=exec $HOME/.local/bin/omavoi daemon
 CONF
 systemctl --user daemon-reload && systemctl --user restart omavoid
 ```
 
-`/run` is cleared at boot, so this disappears on its own — by which time the
-login itself has the group and the override would only be noise. It sets the
-daemon's *primary* group to `input`; the only visible effect is the group
-owner on files the daemon writes under `~/.local/state/omavoi`, which no
-longer matters now that those are 0600 — see below.
+systemd hands `newgrp` that one line on stdin; `newgrp` execs your login
+shell, which execs the daemon. No pipeline and no fork, so the daemon is the
+unit's MainPID exactly as it is without the override, and stop, restart and
+reload still reach it. It sets the daemon's *primary* group to `input`; the
+only visible effect is the group owner on files the daemon writes under
+`~/.local/state/omavoi`, which no longer matters now that those are 0600 —
+see below.
 
 ## What it writes, and who can read it
 

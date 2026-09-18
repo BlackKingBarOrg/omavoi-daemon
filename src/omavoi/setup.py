@@ -258,15 +258,24 @@ def check(cfg: dict[str, Any]) -> Report:
             note="",
         ))
     elif listed and not held:
+        # A group is granted at login, so this session cannot see it however
+        # many times usermod is run. The daemon can, though: install.sh starts
+        # it through newgrp, which re-reads /etc/group. Offer that when the
+        # plugin is here to offer it, and the README's recipe when it is not.
+        installer = os.path.expanduser(
+            "~/.config/omarchy/plugins/ai.bkblab.omavoi/install.sh")
         steps.append(Step(
             "hotkey", f"Hotkey ({cfg['hotkey']['key']} via evdev)", False,
             detail="in the input group, but this session started before that",
-            command="",
+            command=installer if os.path.exists(installer) else "",
             needs_root=False,
             optional=True,
-            note="Nothing left to install. A group is granted at login, so this "
-                 "session cannot see it however many times usermod is run — log "
-                 "out and back in and the key works.",
+            note=("Starts the daemon through newgrp, so it has the group now; "
+                  "logging out and back in also works."
+                  if os.path.exists(installer) else
+                  "Nothing left to install. Start the daemon through newgrp — "
+                  "the recipe is in the README under \"the input group\" — or "
+                  "log out and back in."),
         ))
     else:
         steps.append(Step(
@@ -275,9 +284,11 @@ def check(cfg: dict[str, Any]) -> Report:
             command="sudo usermod -aG input $USER",
             needs_root=True,
             optional=True,
-            note="The group only takes effect at your next login. Until then, bind a "
-                 "non-modifier key such as F9 in Hyprland — modifier keys cannot be "
-                 "bound that way, because pressing one fires the release binding at once.",
+            note="A group is granted at login. The plugin's install.sh starts the "
+                 "daemon through newgrp so the key works at once; failing that, bind a "
+                 "non-modifier key such as F9 in Hyprland until your next login — "
+                 "modifier keys cannot be bound that way, because pressing one fires "
+                 "the release binding at once.",
         ))
 
     # 5. Run it at login.
