@@ -30,20 +30,29 @@ therefore:
 |---|---|---|
 | `omavoid` | the daemon — this repository: model, microphone, hotkey, typing | `uv tool install` |
 | model weights | 3 GB, never shipped | downloaded on first run |
-| `ai.bkblab.omavoi` | the QML plugin: bar module, HUD, console — [the main repository](https://github.com/BlackKingBarOrg/omavoi) | `omarchy plugin add` |
-
-They are two repositories because `omarchy plugin add` clones a repository
-whose `manifest.json` is at its root, and this one is a Python package.
+| `ai.bkblab.omavoi` | the QML plugin: bar module, HUD, console — [its own repository](https://github.com/BlackKingBarOrg/omavoi) | `omarchy plugin add` |
 
 The plugin talks to the daemon over a Unix socket and never installs anything
 itself — Omarchy deliberately runs nothing from inside a plugin folder. The
 first-run screen asks instead, and prints every command before it runs.
 
+## Install
+
+One command, and the rest happens in the plugin's own first-run screen —
+language, model, packages (one password prompt), the daemon, the unit, the
+weights:
+
+```bash
+omarchy plugin add https://github.com/BlackKingBarOrg/omavoi --enable --yes
+```
+
+Then open the console by clicking the Omavoi module in the bar. `SUPER + ALT
++ V` is bound by the last step of setup, so it works from then on.
+
 ## The daemon on its own
 
-The ordinary install is the one command in the
-[main repository](https://github.com/BlackKingBarOrg/omavoi), which does all of
-this for you. By hand, or if you want the daemon and no desktop pieces:
+If you would rather do it by hand, or you only want the daemon and no desktop
+pieces:
 
 ```bash
 # 1. the speech engine, the typing tools, and llama.cpp for modes with an LLM
@@ -83,6 +92,11 @@ now, which declares both `provides ggml-cpu` and `conflicts ggml-cpu`, so
 naming the old one pins a stale 0.21.0 split package that cannot coexist with
 the `ggml` these all depend on — and pacman refuses the whole transaction with
 `unresolvable package conflicts`.
+
+The desktop pieces live in
+[omavoi](https://github.com/BlackKingBarOrg/omavoi).
+They are a separate repository because `omarchy plugin add` clones a repository
+whose `manifest.json` is at its root, and this one is a Python package.
 
 The hotkey is read from evdev, which needs membership of the `input` group and
 a fresh login. Until then `omavoi setup` will offer a Hyprland binding on a
