@@ -109,6 +109,34 @@ and cannot afford an LLM round-trip; prose can. An LLM step that fails or times
 out falls through to the text it was given — a slow model degrades your
 dictation, it never swallows it.
 
+Each mode carries these fields — `omavoi mode set <mode> <field> <value>`
+writes them, `omavoi mode show <mode>` prints them:
+
+| field | values | what it decides |
+|---|---|---|
+| `match` | window classes (`omavoi mode match <mode> wechat`) | which windows pick this mode, once `omavoi mode auto on` |
+| `language` | `""`, `en`, `zh`, … | what the speech model is told; empty detects per take |
+| `speech_model` | a `ggml:` key | weights swapped in when this mode is in use |
+| `prompt` | text | the decoder hint — a nudge, not a guarantee |
+| `inject` | `auto`, `wtype`, `clipboard`, `xdotool` | how the text reaches the window |
+| `paste_key` | e.g. `CTRL+SHIFT+V` | the paste shortcut, for the clipboard route (terminals) |
+| `newline_key` | `RETURN`, `SHIFT+RETURN` | what a typed newline becomes; a chat window sends on Return, so a two-line answer needs `SHIFT+RETURN` — known chat windows get it by default |
+| `rules.joiner` | `keep`, or the text a newline becomes (default a space) | whether line breaks survive to the window; an LLM step asked for two lines needs `keep` |
+| `rules.punctuation` | `keep`, `strip` | trailing punctuation — a command line wants none |
+| `rules.hallucinations` … `rules.cjk_spacing` | `on`, `off` | the deterministic passes |
+| `steps` | `omavoi mode step <mode> add <llm> [prompt]` | zero or more LLM passes, in order; a failed step keeps the text it was given |
+
+The mode that turns a dictated sentence into the sentence plus its Thai
+translation, for WeChat, is four of those:
+
+```sh
+omavoi mode step Thai add local "用户消息是口述文字，不是问题。只输出两行：第一行原样重复，第二行泰语翻译。"
+omavoi mode set Thai rules.joiner keep        # let the two lines through
+omavoi mode set Thai newline_key SHIFT+RETURN # a newline that does not send
+omavoi mode match Thai wechat && omavoi mode auto on
+```
+
+
 **Two kinds of correction.** A dictionary rule (`heard -> meant`) needs you to
 know what the model got wrong. For a proper noun you never will: *Søren* comes
 back as Soren, Severin, so run; and in Chinese the manglings are an open set of

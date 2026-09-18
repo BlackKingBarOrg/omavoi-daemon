@@ -16,6 +16,9 @@ from .. import config, i18n, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 _MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key", "newline_key")
+# The rules a mode carries, for `set <mode> rules.<key> <value>`.
+_RULE_FLAGS = ("hallucinations", "fillers", "dictionary", "names", "cjk_spacing")
+_RULE_KEYS = (*_RULE_FLAGS, "punctuation", "joiner")
 
 
 def _mode_wants(cfg: dict[str, Any], mode: Any) -> list[dict[str, Any]]:
@@ -221,6 +224,13 @@ def cmd_mode(args: argparse.Namespace) -> int:
             live = str(ipc.request({"cmd": "status"}, timeout=3).get("mode", ""))
         except (ConnectionError, OSError):
             reachable = False
+        # --json was accepted here and ignored, so a script that asked for
+        # it got two lines of prose and parsed the word "the".
+        if args.json:
+            print(json.dumps({"mode": mode.name, "window": win.cls or "",
+                              "matched": mode.matched_on or "", "daemon": live,
+                              "reachable": reachable}, ensure_ascii=False))
+            return 0
         print(f"{mode.name}  {DIM}window={win.cls or '?'} "
               f"matched={mode.matched_on or '-'}{RESET}")
         if not reachable:
@@ -272,8 +282,36 @@ def cmd_mode(args: argparse.Namespace) -> int:
         if name not in table:
             print(f"{RED}no such mode: {name}{RESET}", file=sys.stderr)
             return 1
+        # rules.<key>, so a rule can be set where the other fields are set.
+        # It could only be reached through `omavoi config set
+        # modes.<mode>.rules.<key>`, which nothing pointed at -- getting a
+        # two-line LLM answer to survive to the window meant knowing that
+        # `joiner = keep` existed and where it lived.
+        if field.startswith("rules."):
+            key = field[len("rules."):]
+            if key not in _RULE_KEYS:
+                print(f"{RED}unknown rule {key!r}; one of {', '.join(_RULE_KEYS)}{RESET}",
+                      file=sys.stderr)
+                return 1
+            rules = dict(table[name].get("rules") or {})
+            low = value.strip().lower()
+            if key in _RULE_FLAGS:
+                if low not in ("on", "off", "true", "false", "yes", "no", "1", "0"):
+                    print(f"{RED}{key} is on or off{RESET}", file=sys.stderr)
+                    return 1
+                rules[key] = low in ("on", "true", "yes", "1")
+            elif key == "punctuation":
+                if low not in ("keep", "strip"):
+                    print(f"{RED}punctuation is keep or strip{RESET}", file=sys.stderr)
+                    return 1
+                rules[key] = low
+            else:  # joiner: keep, or the literal text a newline becomes
+                rules[key] = "keep" if low == "keep" else value
+            table[name]["rules"] = rules
+            return save(f"{name}.rules.{key} set")
         if field not in _MODE_FIELDS:
-            print(f"{RED}unknown field {field!r}; one of {', '.join(_MODE_FIELDS)}{RESET}",
+            print(f"{RED}unknown field {field!r}; one of {', '.join(_MODE_FIELDS)} "
+                  f"or rules.<{'|'.join(_RULE_KEYS)}>{RESET}",
                   file=sys.stderr)
             return 1
         # Refused where it is written, not warned about on the next load: a

@@ -405,6 +405,14 @@ DEFAULTS: dict[str, Any] = {
         # type into chat windows set SHIFT+RETURN; a paste keeps newlines as
         # they are and never consults this.
         "newline_key": "RETURN",
+        # Windows where Return sends the message, so a typed newline goes as
+        # SHIFT+RETURN whatever newline_key says -- a mode's own newline_key
+        # still wins. Matched against the window class, case-insensitively,
+        # as a substring, like clipboard_classes.
+        "chat_classes": [
+            "wechat", "weixin", "feishu", "lark", "qq", "dingtalk",
+            "slack", "discord", "telegram", "element", "signal",
+        ],
         # How the paste keystroke is delivered:
         #   shortcut  the compositor synthesises it (hyprctl send_shortcut)
         #   wtype     the virtual keyboard sends it — wrong keys on X11

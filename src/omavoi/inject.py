@@ -70,6 +70,20 @@ class InjectResult:
         }
 
 
+class PartiallyTyped(RuntimeError):
+    """Typing failed part-way: `remaining` is the text not yet delivered.
+
+    Typing goes line by line now, with a key between lines, so a failure can
+    land after the first line is already in the window. Retrying with the
+    whole text would type that line twice; the retry gets the remainder.
+    """
+
+    def __init__(self, remaining: str, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.remaining = remaining
+        self.cause = cause
+
+
 # The names Xlib and xkb spell with capitals. Anything else that is more than
 # one character is capitalised, which covers Tab, Escape, Home, Up, Down.
 _KEYSYMS = {"RETURN": "Return", "ENTER": "Return", "KP_ENTER": "KP_Enter",
@@ -87,6 +101,7 @@ class Injector:
         # What a typed newline becomes. Return, unless the mode says otherwise
         # -- a chat window wants SHIFT+RETURN, or the first line gets sent.
         self.default_newline_key: str = inject.get("newline_key", "RETURN")
+        self.chat_classes = [c.lower() for c in inject.get("chat_classes", [])]
         self.paste_method: str = inject.get("paste_method", "") or ""
         self.xdotool_delay_ms = int(inject.get("xdotool_delay_ms", 12))
         # 150, not the 60 this used to say: XWayland mirrors the Wayland
@@ -158,11 +173,15 @@ class Injector:
             log.warning("%s injection failed: %s", method, exc)
             # One retry on a route that could plausibly work instead. A
             # dropped transcript is worse than a clipboard we had to touch.
+            # Only what is still owed, though: typing runs line by line now,
+            # and a failure after the first line is in the window must not
+            # put that line there twice.
+            owed = exc.remaining if isinstance(exc, PartiallyTyped) else text
             other = self._fallback_for(method, win)
             if other is None:
                 return InjectResult(False, method, time.monotonic() - started, error=str(exc))
             try:
-                via = self._deliver(other, text, profile, win)
+                via = self._deliver(other, owed, profile, win)
                 return InjectResult(True, other, time.monotonic() - started,
                                     error=str(exc), fell_back=True,
                                     paste_via=via, chars=len(text))
@@ -173,10 +192,10 @@ class Injector:
     def _deliver(self, method: str, text: str, profile: dict[str, Any],
                  win: Window) -> str:
         if method == "wtype":
-            self._wtype(text, profile)
+            self._wtype(text, profile, win)
             return ""
         if method == "xdotool":
-            self._xdotool(text, profile)
+            self._xdotool(text, profile, win)
             return "xtest-type"
         via = self._paste_via(win, profile)
         self._clipboard(text, profile, via)
@@ -191,11 +210,19 @@ class Injector:
             return "clipboard"
         return "clipboard" if method == "wtype" else "wtype"
 
-    def _newline_key(self, profile: dict[str, Any]) -> str:
-        return str(profile.get("newline_key") or self.default_newline_key)
+    def _newline_key(self, profile: dict[str, Any], win: Window | None = None) -> str:
+        if profile.get("newline_key"):
+            return str(profile["newline_key"])
+        # A chat window sends on Return whatever the mode says, so the mode
+        # does not have to know it is one.
+        cls = (win.cls if win is not None else "").lower()
+        if cls and any(c and c in cls for c in self.chat_classes):
+            return "SHIFT+RETURN"
+        return self.default_newline_key
 
     def _typed_segments(self, text: str, profile: dict[str, Any],
-                        type_one: Callable[[str], None], method: str) -> None:
+                        type_one: Callable[[str], None], method: str,
+                        win: Window | None = None) -> None:
         """Type `text`, sending each newline as the mode's newline key.
 
         `xdotool type` and wtype both turn a literal newline into Return,
@@ -208,19 +235,32 @@ class Injector:
         if "\n" not in text:
             type_one(text)
             return
-        key = self._newline_key(profile)
+        key = self._newline_key(profile, win)
         lines = text.split("\n")
         for i, line in enumerate(lines):
-            if line:
-                type_one(line)
-            if i < len(lines) - 1:
-                self._send_paste(key, method)
+            typed = False
+            try:
+                if line:
+                    type_one(line)
+                typed = True
+                if i < len(lines) - 1:
+                    self._send_paste(key, method)
+            except Exception as exc:
+                # What is still owed: this line too if its typing failed,
+                # otherwise the lines after it. A retry types that and only
+                # that. Nothing delivered yet is an ordinary failure.
+                owed = lines[i:] if not typed else lines[i + 1:]
+                still = "\n".join(owed)
+                if still == text:
+                    raise
+                raise PartiallyTyped(still, exc) from exc
 
-    def _xdotool(self, text: str, profile: dict[str, Any] | None = None) -> None:
+    def _xdotool(self, text: str, profile: dict[str, Any] | None = None,
+                 win: Window | None = None) -> None:
         """XTEST, for X11 clients. No clipboard, no custom keymap."""
         if shutil.which("xdotool") is None:
             raise RuntimeError("xdotool is not installed")
-        self._typed_segments(text, profile or {}, self._xdotool_type, "xdotool")
+        self._typed_segments(text, profile or {}, self._xdotool_type, "xdotool", win)
 
     def _xdotool_type(self, text: str) -> None:
         env = dict(os.environ)
@@ -237,10 +277,11 @@ class Injector:
 
     # -- backends ----------------------------------------------------------
 
-    def _wtype(self, text: str, profile: dict[str, Any] | None = None) -> None:
+    def _wtype(self, text: str, profile: dict[str, Any] | None = None,
+               win: Window | None = None) -> None:
         if shutil.which("wtype") is None:
             raise RuntimeError("wtype is not installed")
-        self._typed_segments(text, profile or {}, self._wtype_type, "wtype")
+        self._typed_segments(text, profile or {}, self._wtype_type, "wtype", win)
 
     def _wtype_type(self, text: str) -> None:
         # Text goes in on stdin, not argv: no escaping, no ARG_MAX limit,

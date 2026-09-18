@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
 from omavoi import inject as inject_mod
-from omavoi.inject import Injector
+from omavoi.inject import Injector, PartiallyTyped
 
 
 class Ran:
@@ -108,3 +109,78 @@ def test_keysym_spelling_for_xdotool(ran, combo, expect):
     # into shift+return, which xdotool cannot send.
     Injector._send_paste(combo, "xdotool")
     assert ran.calls[-1][-1] == expect
+
+
+# -- what is owed after a partial typing, and chat windows by default --------
+
+
+def _win(cls: str, xwayland: bool = True):
+    return SimpleNamespace(cls=cls, xwayland=xwayland, title="", app_id=cls)
+
+
+def test_chat_window_defaults_to_shift_return(ran):
+    Injector({"inject": {"chat_classes": ["wechat", "slack"]}})._xdotool(
+        "原文\nคำแปล", {}, _win("wechat"))
+    assert [c for c in _xdotool_calls(ran) if c[0] == "key"] == [("key", "shift+Return")]
+
+
+def test_mode_newline_key_beats_the_chat_default(ran):
+    Injector({"inject": {"chat_classes": ["wechat"]}})._xdotool(
+        "a\nb", {"newline_key": "RETURN"}, _win("wechat"))
+    assert [c for c in _xdotool_calls(ran) if c[0] == "key"] == [("key", "Return")]
+
+
+def test_editor_window_keeps_return(ran):
+    Injector({"inject": {"chat_classes": ["wechat"]}})._xdotool("a\nb", {}, _win("code"))
+    assert [c for c in _xdotool_calls(ran) if c[0] == "key"] == [("key", "Return")]
+
+
+def test_failure_after_first_line_owes_only_the_rest(ran, monkeypatch):
+    inj = Injector({"inject": {}})
+    calls = {"n": 0}
+
+    def flaky_key(combo, method="shortcut"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("xdotool key failed")
+    monkeypatch.setattr(inj, "_send_paste", flaky_key)
+    with pytest.raises(PartiallyTyped) as info:
+        inj._xdotool("第一行\n第二行", {})
+    assert info.value.remaining == "第二行"
+    assert _xdotool_calls(ran) == [("type", "第一行")]
+
+
+def test_failure_typing_the_first_line_is_a_plain_error(ran, monkeypatch):
+    # Nothing reached the window, so the caller may retry with everything.
+    inj = Injector({"inject": {}})
+    monkeypatch.setattr(inj, "_xdotool_type", lambda text: (_ for _ in ()).throw(RuntimeError("XTEST refused")))
+    with pytest.raises(RuntimeError) as info:
+        inj._xdotool("第一行\n第二行", {})
+    assert not isinstance(info.value, PartiallyTyped)
+
+
+def test_inject_falls_back_with_the_remainder_not_the_whole(ran, monkeypatch):
+    # xdotool types line one, the newline key fails; the fallback for an X11
+    # window is the clipboard, and what it must carry is line two alone --
+    # otherwise line one lands twice.
+    monkeypatch.setattr(inject_mod.time, "sleep", lambda s: None)
+    inj = Injector({"inject": {"restore_clipboard_after": 0}})
+    calls = {"n": 0}
+
+    def flaky_key(combo, method="shortcut"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("xdotool key failed")
+    monkeypatch.setattr(inj, "_send_paste", flaky_key)
+    copied: list[bytes] = []
+    real_run = subprocess.run
+
+    def run(argv, **kw):
+        if argv[0] == "wl-copy":
+            copied.append(kw.get("input", b""))
+        return real_run(argv, **kw)
+    monkeypatch.setattr(subprocess, "run", run)
+    win = _win("wechat", xwayland=True)
+    result = inj.inject("第一行\n第二行", win, {})
+    assert result.ok and result.fell_back and result.method == "clipboard"
+    assert copied == ["第二行".encode()]
