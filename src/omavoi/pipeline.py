@@ -244,11 +244,16 @@ class Pipeline:
 
         final = self._run_steps(result.text, mode, entry) if mode.steps else result.text
 
-        # Fold newlines last, whoever produced them. The rule that turns a
-        # segment break into punctuation runs before the LLM, so an LLM asked
-        # for two lines used to hand them straight to injection — and a
-        # newline typed into a chat window is the send key, which is how a
-        # bilingual take ended up posting only its first line.
+        # Fold newlines last, whoever produced them, unless the mode says
+        # keep. The rule that turns a segment break into punctuation runs
+        # before the LLM, so an LLM asked for two lines hands them straight
+        # to injection. That was once the reason to fold here regardless: a
+        # newline typed into a chat window is the send key, and a bilingual
+        # take posted only its first line. Folding made the second line
+        # impossible rather than deliverable. The injector now types a
+        # newline as the mode's newline_key -- SHIFT+RETURN for a chat
+        # window -- so a mode that wants lines sets joiner = "keep" and gets
+        # them, in the box, unsent.
         if mode.joiner != "keep" and "\n" in final:
             if mode.joiner == " ":
                 # Script-aware, because a space is a Latin convention. Full-
@@ -280,6 +285,8 @@ class Pipeline:
             profile: dict[str, Any] = {"inject": mode.inject}
             if mode.paste_key:
                 profile["paste_key"] = mode.paste_key
+            if mode.newline_key:
+                profile["newline_key"] = mode.newline_key
             self._stage("injecting")
             outcome = self.injector.inject(final, win, profile)
             entry["inject"] = outcome.as_dict()

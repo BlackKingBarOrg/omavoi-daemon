@@ -45,6 +45,9 @@ class Mode:
     prompt: str = ""
     inject: str = "auto"
     paste_key: str = ""
+    # What a typed newline becomes; "" follows [inject].newline_key. A chat
+    # mode says SHIFT+RETURN so a two-line answer stays in the compose box.
+    newline_key: str = ""
     rules: dict[str, Any] = field(default_factory=dict)
     steps: list[Step] = field(default_factory=list)
     matched_on: str = ""
@@ -97,6 +100,7 @@ def _build(name: str, raw: dict[str, Any], base: dict[str, Any], matched_on: str
         prompt=str(raw.get("prompt", base.get("prompt", "")) or ""),
         inject=str(pick("inject", "auto")),
         paste_key=str(raw.get("paste_key", base.get("paste_key", "")) or ""),
+        newline_key=str(raw.get("newline_key", base.get("newline_key", "")) or ""),
         rules=dict(base.get("rules") or {}) | dict(raw.get("rules") or {}),
         steps=steps,
         matched_on=matched_on,

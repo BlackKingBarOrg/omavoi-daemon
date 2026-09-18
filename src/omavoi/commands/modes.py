@@ -15,7 +15,7 @@ from typing import Any
 from .. import config, i18n, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
-_MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key")
+_MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key", "newline_key")
 
 
 def _mode_wants(cfg: dict[str, Any], mode: Any) -> list[dict[str, Any]]:

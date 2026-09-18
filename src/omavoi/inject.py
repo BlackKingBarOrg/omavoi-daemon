@@ -39,6 +39,7 @@ import shutil
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,6 +70,12 @@ class InjectResult:
         }
 
 
+# The names Xlib and xkb spell with capitals. Anything else that is more than
+# one character is capitalised, which covers Tab, Escape, Home, Up, Down.
+_KEYSYMS = {"RETURN": "Return", "ENTER": "Return", "KP_ENTER": "KP_Enter",
+            "SPACE": "space", "TAB": "Tab", "ESCAPE": "Escape", "ESC": "Escape",
+            "BACKSPACE": "BackSpace", "DELETE": "Delete"}
+
 class Injector:
     def __init__(self, cfg: dict[str, Any]) -> None:
         inject = cfg["inject"]
@@ -77,6 +84,9 @@ class Injector:
         self.restore_after = float(inject.get("restore_clipboard_after", 4.0))
         self.wtype_delay_ms = int(inject.get("wtype_delay_ms", 0))
         self.default_paste_key: str = inject.get("paste_key", "CTRL+V")
+        # What a typed newline becomes. Return, unless the mode says otherwise
+        # -- a chat window wants SHIFT+RETURN, or the first line gets sent.
+        self.default_newline_key: str = inject.get("newline_key", "RETURN")
         self.paste_method: str = inject.get("paste_method", "") or ""
         self.xdotool_delay_ms = int(inject.get("xdotool_delay_ms", 12))
         # 150, not the 60 this used to say: XWayland mirrors the Wayland
@@ -163,10 +173,10 @@ class Injector:
     def _deliver(self, method: str, text: str, profile: dict[str, Any],
                  win: Window) -> str:
         if method == "wtype":
-            self._wtype(text)
+            self._wtype(text, profile)
             return ""
         if method == "xdotool":
-            self._xdotool(text)
+            self._xdotool(text, profile)
             return "xtest-type"
         via = self._paste_via(win, profile)
         self._clipboard(text, profile, via)
@@ -181,10 +191,38 @@ class Injector:
             return "clipboard"
         return "clipboard" if method == "wtype" else "wtype"
 
-    def _xdotool(self, text: str) -> None:
+    def _newline_key(self, profile: dict[str, Any]) -> str:
+        return str(profile.get("newline_key") or self.default_newline_key)
+
+    def _typed_segments(self, text: str, profile: dict[str, Any],
+                        type_one: Callable[[str], None], method: str) -> None:
+        """Type `text`, sending each newline as the mode's newline key.
+
+        `xdotool type` and wtype both turn a literal newline into Return,
+        which in an editor is a newline and in a chat window is the send
+        key -- so a two-line take posted its first line and left the second
+        sitting in the box. Typing the lines one at a time and sending
+        SHIFT+RETURN (or whatever the mode names) between them is what a
+        person does to get a second line into a chat window.
+        """
+        if "\n" not in text:
+            type_one(text)
+            return
+        key = self._newline_key(profile)
+        lines = text.split("\n")
+        for i, line in enumerate(lines):
+            if line:
+                type_one(line)
+            if i < len(lines) - 1:
+                self._send_paste(key, method)
+
+    def _xdotool(self, text: str, profile: dict[str, Any] | None = None) -> None:
         """XTEST, for X11 clients. No clipboard, no custom keymap."""
         if shutil.which("xdotool") is None:
             raise RuntimeError("xdotool is not installed")
+        self._typed_segments(text, profile or {}, self._xdotool_type, "xdotool")
+
+    def _xdotool_type(self, text: str) -> None:
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")
         proc = subprocess.run(
@@ -199,9 +237,12 @@ class Injector:
 
     # -- backends ----------------------------------------------------------
 
-    def _wtype(self, text: str) -> None:
+    def _wtype(self, text: str, profile: dict[str, Any] | None = None) -> None:
         if shutil.which("wtype") is None:
             raise RuntimeError("wtype is not installed")
+        self._typed_segments(text, profile or {}, self._wtype_type, "wtype")
+
+    def _wtype_type(self, text: str) -> None:
         # Text goes in on stdin, not argv: no escaping, no ARG_MAX limit,
         # and text starting with '-' can't be read as a flag.
         argv = ["wtype"]
@@ -256,11 +297,15 @@ class Injector:
         if not parts:
             raise ValueError(f"invalid paste shortcut {combo!r}")
         key, mods = parts[-1], parts[:-1]
+        # X keysyms are case-sensitive and multi-letter: "return" is not a
+        # key, "Return" is. A single letter is lowered below; a name is
+        # written the way Xlib spells it.
+        key = _KEYSYMS.get(key, key if len(key) == 1 else key.capitalize())
 
         if method == "xdotool":
             if shutil.which("xdotool") is None:
                 raise RuntimeError("xdotool is not installed")
-            combo_x = "+".join([*(m.lower() for m in mods), key.lower()])
+            combo_x = "+".join([*(m.lower() for m in mods), key.lower() if len(key) == 1 else key])
             env = dict(os.environ)
             env.setdefault("DISPLAY", ":0")
             proc = subprocess.run(["xdotool", "key", "--clearmodifiers", combo_x],
@@ -276,7 +321,7 @@ class Injector:
             argv: list[str] = []
             for mod in mods:
                 argv += ["-M", mod.lower()]
-            argv += ["-k", key.lower()]
+            argv += ["-k", key.lower() if len(key) == 1 else key]
             for mod in reversed(mods):
                 argv += ["-m", mod.lower()]
             proc = subprocess.run(["wtype", *argv], capture_output=True, timeout=5, check=False)

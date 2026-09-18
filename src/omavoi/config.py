@@ -397,6 +397,14 @@ DEFAULTS: dict[str, Any] = {
             "wechat", "weixin", "feishu", "lark", "qq", "dingtalk",
         ],
         "paste_key": "CTRL+V",
+        # What a newline in the text becomes when it is typed rather than
+        # pasted. In an editor a newline is Return. In a chat window Return
+        # is the send key, so a two-line take posted its first line and left
+        # the second in the box -- and the earlier answer, folding every
+        # newline away after the LLM, made two lines impossible. Modes that
+        # type into chat windows set SHIFT+RETURN; a paste keeps newlines as
+        # they are and never consults this.
+        "newline_key": "RETURN",
         # How the paste keystroke is delivered:
         #   shortcut  the compositor synthesises it (hyprctl send_shortcut)
         #   wtype     the virtual keyboard sends it — wrong keys on X11
