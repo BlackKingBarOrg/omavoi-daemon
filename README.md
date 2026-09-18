@@ -1,12 +1,12 @@
 # Omavoi — the daemon
 
-The speech engine behind [Omavoi](https://github.com/BlackKingBarOrg/omavoi):
+The speech engine behind [Omavoi](https://github.com/bkblab/omavoi):
 the model, the microphone, the hotkey and the typing. Hold a key, talk, and the
 text lands in whatever window you were already typing into. Everything runs on
 your own machine.
 
 **Installing Omavoi?** Start at the
-[main repository](https://github.com/BlackKingBarOrg/omavoi) — one
+[main repository](https://github.com/bkblab/omavoi) — one
 `omarchy plugin add`, and its first-run screen installs this daemon for you at
 a pinned commit. This repository is for running the daemon on its own, and for
 the reference below.
@@ -30,7 +30,7 @@ therefore:
 |---|---|---|
 | `omavoid` | the daemon — this repository: model, microphone, hotkey, typing | `uv tool install` |
 | model weights | 3 GB, never shipped | downloaded on first run |
-| `ai.bkblab.omavoi` | the QML plugin: bar module, HUD, console — [its own repository](https://github.com/BlackKingBarOrg/omavoi) | `omarchy plugin add` |
+| `ai.bkblab.omavoi` | the QML plugin: bar module, HUD, console — [its own repository](https://github.com/bkblab/omavoi) | `omarchy plugin add` |
 
 The plugin talks to the daemon over a Unix socket and never installs anything
 itself — Omarchy deliberately runs nothing from inside a plugin folder. The
@@ -43,7 +43,7 @@ language, model, packages (one password prompt), the daemon, the unit, the
 weights:
 
 ```bash
-omarchy plugin add https://github.com/BlackKingBarOrg/omavoi --enable --yes
+omarchy plugin add https://github.com/bkblab/omavoi --enable --yes
 ```
 
 Then open the console by clicking the Omavoi module in the bar. `SUPER + ALT
@@ -61,7 +61,7 @@ sudo pacman -S --needed whisper-cpp ggml ggml-vulkan llama-cpp \
                         pipewire wtype wl-clipboard xdotool
 
 # 2. the daemon. `omavoi` is not on PyPI; install it from this repository
-uv tool install git+https://github.com/BlackKingBarOrg/omavoi-daemon
+uv tool install git+https://github.com/bkblab/omavoi-daemon
 
 # 3. weights, and whatever is still missing. It lists every remaining step
 #    with the command for each; --run does the next one that needs no root
@@ -70,7 +70,7 @@ omavoi setup
 # 4. the systemd user unit. It ships with the plugin rather than with this
 #    package, so a daemon-only install fetches just the unit
 curl -fsSL --create-dirs -o ~/.config/systemd/user/omavoid.service \
-  https://raw.githubusercontent.com/BlackKingBarOrg/omavoi/master/omavoid.service
+  https://raw.githubusercontent.com/bkblab/omavoi/master/omavoid.service
 systemctl --user daemon-reload
 systemctl --user enable --now omavoid.service
 ```
@@ -94,7 +94,7 @@ the `ggml` these all depend on — and pacman refuses the whole transaction with
 `unresolvable package conflicts`.
 
 The desktop pieces live in
-[omavoi](https://github.com/BlackKingBarOrg/omavoi).
+[omavoi](https://github.com/bkblab/omavoi).
 They are a separate repository because `omarchy plugin add` clones a repository
 whose `manifest.json` is at its root, and this one is a Python package.
 
