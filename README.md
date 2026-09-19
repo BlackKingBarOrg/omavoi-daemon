@@ -147,17 +147,25 @@ omavoi mode match Thai wechat && omavoi mode auto on
 ```
 
 
-**Two kinds of correction.** A dictionary rule (`heard -> meant`) needs you to
-know what the model got wrong. For a proper noun you never will: *Søren* comes
-back as Soren, Severin, so run; and in Chinese the manglings are an open set of
-homophones — 李文渊 comes back as 李文远, 李闻渊, 里闻鸢. So names are written
-once, correctly, seeded into the decoder prompt, and matched afterwards by
-sound: pinyin for CJK, a consonant skeleton for Latin. A name with too little
-sound in it is seeded but never matched — *Bo* and *Bob* both reduce to the
-skeleton `B`, which is also by, bay and boy — and the same goes for a
-single-syllable Chinese name. Sound matching is the one feature here that can
-damage text that was already right, so it stays inert until its dry run has
-been reviewed.
+**My dictionary.** Add the spelling you want, such as `JavaScript` or a
+person's full name. Spaces are kept as part of a phrase. Omavoi uses the word
+as a recognition hint and normalizes its capitalization after transcription.
+If a particular mistake keeps returning, add that spelling to the same word.
+Sound-based correction is optional and off by default; preview it with a
+pasted sentence before relying on it.
+
+The console uses `omavoi vocabulary list --json` and the transactional
+`save`, `remove`, `restore`, and `preview` commands with `--json-input`.
+Mutations require the `etag` returned by `list`, so an old editor cannot
+replace newer changes. `dict` and `names` remain compatible CLI entry points.
+The first edit backs up and migrates ordinary old dictionaries; ambiguous
+chains or conflicting scopes stay on the legacy editor until resolved.
+Restart the speech service after upgrading the package, before editing words.
+
+To roll back a migration, pass the current `etag` and the migration backup's
+filename as JSON to `omavoi vocabulary rollback --json-input`. The rollback
+also backs up the new configuration. Remote install pins are updated by the
+plugin release after this daemon commit has been published.
 
 **Injection knows about XWayland.** `wtype` installs a keymap for its virtual
 keyboard that X11 clients never receive, so they decode its keycodes against
@@ -277,7 +285,8 @@ omavoi stats                  empty rate, RTF, input level
 
 omavoi mode list|show|new|rm|set|match|unmatch|step
 omavoi model list|pull|rm|use
-omavoi dict add|rm|list       heard -> meant
+omavoi vocabulary list|save|remove|restore|preview|rollback
+omavoi dict add|rm|list       legacy heard -> meant interface
 omavoi names add|rm|dryrun|enable
 omavoi config get|set|edit|show
 omavoi transcribe FILE [--mode M]
@@ -343,7 +352,7 @@ read — the settings page offered three dwell buttons and had one behaviour —
 so a `hud_position` of `cursor` or `window`, which was never built, is now
 refused by `config set` rather than accepted and ignored.
 
-Not yet: the dictionary's history-mined suggestions and its try-it box; a
+Not yet: the dictionary's history-mined suggestions; a
 modifier held to force a mode for one take; and the HUD at the cursor or over
 the focused window rather than at the bottom of the screen.
 

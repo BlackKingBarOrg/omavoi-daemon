@@ -13,6 +13,7 @@ The shape mirrors what the UI presents, deliberately:
 from __future__ import annotations
 
 import copy
+import fcntl
 import logging
 import os
 import re
@@ -457,16 +458,34 @@ def defaults() -> dict[str, Any]:
     return copy.deepcopy(DEFAULTS)
 
 
+class LoadedConfig(dict):
+    """A config snapshot remembers the bytes it is allowed to replace."""
+
+    def __init__(self, values: dict, path: Path, source: bytes | None):
+        super().__init__(values)
+        self.source_path = path
+        self.source_bytes = source
+
+
 def load(path: Path | None = None) -> dict[str, Any]:
     path = path or paths.config_file()
     if not path.exists():
-        return defaults()
+        return LoadedConfig(defaults(), path, None)
+    source = path.read_bytes()
     try:
-        with path.open("rb") as fh:
-            user = tomllib.load(fh)
+        user = tomllib.loads(source.decode("utf-8"))
     except tomllib.TOMLDecodeError as exc:
         raise SystemExit(f"Bad TOML in {path}:\n  {exc}") from exc
-    merged = _deep_merge(defaults(), user)
+    merged = LoadedConfig(_deep_merge(defaults(), user), path, source)
+    if user.get("dictionary", {}).get("schema_version") == 2:
+        # Versioned entries replace the old defaults, including deleted words.
+        merged["dictionary"] = copy.deepcopy(user["dictionary"])
+        from .vocabulary import InvalidWord
+        from .vocabulary import validate as validate_words
+        try:
+            validate_words(merged["dictionary"]["entries"])
+        except (InvalidWord, KeyError, TypeError) as exc:
+            raise SystemExit(f"Invalid dictionary in {path}: {exc}") from exc
     # A user-defined mode should not have to restate every rule.
     for name, mode in merged.get("modes", {}).items():
         if isinstance(mode, dict):
@@ -482,7 +501,7 @@ def load(path: Path | None = None) -> dict[str, Any]:
         # keeps disagreeing with what is running.
         try:
             write(merged, path)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             log.warning("could not write the folded config back: %s", exc)
     for problem in validate(merged):
         log.warning("config: %s", problem)
@@ -846,19 +865,23 @@ def dumps(cfg: dict[str, Any]) -> str:
 def write(cfg: dict[str, Any], path: Path | None = None) -> Path:
     path = path or paths.config_file()
     path.parent.mkdir(parents=True, exist_ok=True)
-    # The pid is in the name because the console starts seven `omavoi`
-    # processes at once and any of them can rewrite the config — a fold, or a
-    # prompt following the interface language. They all compute the same
-    # bytes, so sharing one temp file has never actually corrupted anything,
-    # but one writer truncating another's half-written temp and then renaming
-    # it is not a thing to leave standing on the strength of that.
-    tmp = path.with_suffix(f".toml.{os.getpid()}.tmp")
-    try:
-        tmp.write_text(dumps(cfg), encoding="utf-8")
-        tmp.replace(path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
+    # All CLI writers share this lock. A word editor and a mode editor must
+    # not replace one another's changes from an older full-config snapshot.
+    with path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        current = path.read_bytes() if path.exists() else None
+        if isinstance(cfg, LoadedConfig) and cfg.source_path == path and cfg.source_bytes != current:
+            raise ValueError("Configuration changed elsewhere; reload it before saving")
+        tmp = path.with_suffix(f".toml.{os.getpid()}.tmp")
+        try:
+            encoded = dumps(cfg)
+            tmp.write_text(encoded, encoding="utf-8")
+            tmp.replace(path)
+            if isinstance(cfg, LoadedConfig) and cfg.source_path == path:
+                cfg.source_bytes = encoded.encode("utf-8")
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
     return path
 
 

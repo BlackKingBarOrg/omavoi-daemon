@@ -88,6 +88,7 @@ class Context:
     window_class: str = ""
     window_title: str = ""
     rules: dict[str, Any] = field(default_factory=dict)
+    mode: str = ""
 
 
 @dataclass(slots=True)
@@ -96,6 +97,7 @@ class PostResult:
     raw: str
     changes: list[str] = field(default_factory=list)
     rejected: str = ""  # non-empty means the whole transcript was dropped
+    word_changes: list[dict] = field(default_factory=list)
 
     @property
     def changed(self) -> bool:
@@ -331,8 +333,23 @@ def run(
     raw = text
     post = cfg["post"]
     result = PostResult(text=text.strip(), raw=raw)
+    ctx = ctx or Context()
+    index = None
+    if cfg.get("dictionary", {}).get("schema_version") == 2:
+        from ..vocabulary import Index
+        index = Index(cfg, ctx.mode, ctx.rules)
+
+    def correct_words(value: str) -> str:
+        if index is None:
+            return value
+        after, result.word_changes = index.apply(value)
+        if result.word_changes:
+            result.changes.append("dictionary: " + ", ".join(
+                h["before"] + "→" + h["after"] for h in result.word_changes))
+        return after
 
     if not post.get("enabled", True):
+        result.text = correct_words(result.text)
         return result
     if not result.text:
         result.rejected = "empty"
@@ -387,7 +404,9 @@ def run(
             spaced = True
             step = after
 
-    if rules.get("dictionary", True):
+    if index is not None:
+        step = correct_words(step)
+    elif rules.get("vocabulary", rules.get("dictionary", True)):
         after, hits = apply_dictionary(step, cfg.get("dictionary", {}).get("rules", {}))
         if hits:
             result.changes.append("dictionary: " + ", ".join(hits))

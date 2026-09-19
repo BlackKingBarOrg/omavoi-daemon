@@ -330,6 +330,7 @@ class Daemon:
     def status(self) -> dict[str, Any]:
         return {
             "ok": True,
+            "vocabulary_schema": 2,
             "state": self._state,
             "pid": os.getpid(),
             "uptime": round(time.time() - self._boot, 1),
@@ -525,7 +526,7 @@ class Daemon:
         # working — which is what it did before it was wired up at all.
         self._broadcast({"event": "ui", "ui": self.status()["ui"]})
         log.info("config reloaded%s", "; speech settings changed, restart the daemon" if model_changed else "")
-        return {"ok": True, "reloaded": True, "model_restart_required": model_changed}
+        return {"ok": True, "reloaded": True, "model_restart_required": model_changed, "vocabulary_schema": 2}
 
     def _serve(self) -> None:
         assert self._server is not None

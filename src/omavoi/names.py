@@ -158,7 +158,16 @@ class Hit:
 
 def load(cfg: dict[str, Any]) -> list[NameEntry]:
     out: list[NameEntry] = []
-    for raw in cfg.get("dictionary", {}).get("names", []) or []:
+    dictionary = cfg.get("dictionary", {})
+    raw_names = dictionary.get("names", [])
+    if dictionary.get("schema_version") == 2:
+        raw_names = [{"name": e["text"], "seed": e["recognition_hint"],
+                      "enabled": e["phonetic"]["enabled"], "modes": e["modes"],
+                      "match": "" if e["phonetic"]["method"] == "auto" else e["phonetic"]["method"],
+                      "group": e.get("legacy", {}).get("group", "")}
+                     for e in dictionary["entries"] if e["enabled"]
+                     and (e["recognition_hint"] or e["phonetic"]["enabled"] or e.get("legacy", {}).get("name"))]
+    for raw in raw_names or []:
         if isinstance(raw, str):
             out.append(NameEntry(name=raw))
         elif isinstance(raw, dict) and raw.get("name"):

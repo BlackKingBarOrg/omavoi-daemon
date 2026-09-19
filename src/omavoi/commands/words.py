@@ -16,7 +16,22 @@ from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 def cmd_dict(args: argparse.Namespace) -> int:
     cfg = config.load()
-    dictionary: dict[str, str] = dict(cfg.setdefault("dictionary", {}).get("rules", {}))
+    if cfg.get("dictionary", {}).get("schema_version") == 2:
+        if args.action != "list":
+            from .vocabulary import legacy_command
+            try:
+                return legacy_command(args, "dict", cfg)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 1
+        dictionary = {}
+        for e in cfg["dictionary"]["entries"]:
+            for source in e["aliases"]:
+                dictionary[source] = e["text"]
+            if e["normalize_case"]:
+                dictionary[e["text"]] = e["text"]
+    else:
+        dictionary = dict(cfg.setdefault("dictionary", {}).get("rules", {}))
     if args.action == "list":
         if args.json:
             order = sorted(dictionary, key=len, reverse=True)
@@ -56,7 +71,14 @@ def cmd_names(args: argparse.Namespace) -> int:
     from .. import names as names_mod
 
     cfg = config.load()
-    entries = cfg.setdefault("dictionary", {}).setdefault("names", [])
+    if cfg.get("dictionary", {}).get("schema_version") == 2 and args.action in ("add", "rm", "enable"):
+        from .vocabulary import legacy_command
+        try:
+            return legacy_command(args, "names", cfg)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    entries = cfg.setdefault("dictionary", {}).get("names", [])
 
     if args.action == "list":
         index = names_mod.NameIndex(cfg)

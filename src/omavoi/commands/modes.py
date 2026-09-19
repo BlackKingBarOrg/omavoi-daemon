@@ -17,7 +17,7 @@ from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 _MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key", "newline_key")
 # The rules a mode carries, for `set <mode> rules.<key> <value>`.
-_RULE_FLAGS = ("hallucinations", "fillers", "dictionary", "names", "cjk_spacing")
+_RULE_FLAGS = ("hallucinations", "fillers", "dictionary", "names", "vocabulary", "cjk_spacing")
 _RULE_KEYS = (*_RULE_FLAGS, "punctuation", "joiner")
 
 
@@ -187,7 +187,8 @@ def cmd_mode(args: argparse.Namespace) -> int:
             print(json.dumps({"active": active.name, "modes": rows,
                               "llm": sorted(cfg.get("llm", {})),
                               "fields": list(_MODE_FIELDS),
-                              "switching": dict(switching)},
+                              "switching": dict(switching), "vocabulary_supported": True,
+                              "post_enabled": cfg.get("post", {}).get("enabled", True)},
                              ensure_ascii=False, indent=2))
             return 0
         by_window = bool(switching.get("by_window"))

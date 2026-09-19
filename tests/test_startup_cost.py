@@ -34,6 +34,7 @@ CONSOLE_COMMANDS = [
     [],                                 # --version, the bare import
     ["config", "show", "--json"],
     ["dict", "list", "--json"],
+    ["vocabulary", "list", "--json"],
     ["names", "list", "--json"],
     ["mode", "list", "--json"],
     ["history", "-n", "40", "--json"],

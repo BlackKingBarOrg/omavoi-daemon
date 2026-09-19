@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from . import asr, modes, notify, post
+from . import asr, modes, notify, post, vocabulary
 from . import names as names_mod
 from .audio import Capture
 from .history import History
@@ -192,8 +192,10 @@ class Pipeline:
 
         # Names are seeded into the decoder prompt: getting the model to
         # produce a name is cheaper and cleaner than fixing it afterwards.
-        index = names_mod.NameIndex(cfg, mode.name)
-        seed = index.seed_text() if mode.rules.get("names", True) else ""
+        unified = vocabulary.modern(cfg)
+        index = (vocabulary.Index(cfg, mode.name, mode.rules) if unified
+                 else names_mod.NameIndex(cfg, mode.name))
+        seed = index.seed_text() if mode.rules.get("vocabulary", mode.rules.get("names", True)) else ""
         # The speech pass. Usually a quarter of a second; minutes if the
         # server has to load 3 GB of weights first.
         self._stage("decoding")
@@ -218,23 +220,24 @@ class Pipeline:
         result = post.run(
             transcript.text,
             cfg,
-            post.Context(win.cls, win.title, mode.rules),
+            post.Context(win.cls, win.title, mode.rules, mode.name),
             segments=transcript.segments,
             quiet=quiet,
         )
         entry["post"] = result.as_dict()
 
-        # Whatever seeding did not catch, sound matching recovers here.
-        if result.text and mode.rules.get("names", True):
+        if unified:
+            if result.word_changes:
+                entry["names"] = [{"name": h["after"], "found": h["before"],
+                                   "reason": h["reason"], "id": h["id"]} for h in result.word_changes]
+        elif result.text and mode.rules.get("vocabulary", mode.rules.get("names", True)):
             fixed, hits = index.apply(result.text)
             if hits:
                 entry["names"] = [
-                    {"name": h.name, "found": h.found, "score": round(h.score, 3)}
-                    for h in hits
+                    {"name": h.name, "found": h.found, "score": round(h.score, 3)} for h in hits
                 ]
                 entry["post"]["changes"].append(
-                    "names: " + ", ".join(f"{h.found}->{h.name}" for h in hits)
-                )
+                    "names: " + ", ".join(h.found + "->" + h.name for h in hits))
                 result.text = fixed
         entry["rules_text"] = result.text
         if result.rejected:

@@ -125,6 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_config)
 
+    from .commands.vocabulary import cmd_vocabulary
+
+    p = sub.add_parser("vocabulary", help="manage My dictionary")
+    p.add_argument("action", choices=["list", "save", "remove", "restore", "preview", "mode", "reload", "rollback"])
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--json-input", action="store_true")
+    p.set_defaults(func=cmd_vocabulary)
+
     p = sub.add_parser("dict", help="term dictionary: pin words the model keeps mishearing")
     p.add_argument("action", choices=["list", "add", "rm"])
     p.add_argument("heard", nargs="?", default="", help="what the model produced")
