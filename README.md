@@ -165,6 +165,12 @@ If a particular mistake keeps returning, add that spelling to the same word.
 Sound-based correction is optional and off by default; preview it with a
 pasted sentence before relying on it.
 
+New installations include 15 Omarchy-related recognition hints: Omarchy,
+Omavoi, Hyprland, Quickshell, Wayland, Arch Linux, Neovim, PipeWire,
+WirePlumber, XWayland, Ghostty, Alacritty, Chromium, Obsidian, and Fastfetch.
+Their capitalization is corrected without enabling sound-based matching.
+The existing general programming spellings are also retained.
+
 The console uses `omavoi vocabulary list --json` and the transactional
 `save`, `remove`, `restore`, and `preview` commands with `--json-input`.
 Mutations require the `etag` returned by `list`, so an old editor cannot

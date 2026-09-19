@@ -26,6 +26,14 @@ from . import i18n, paths
 
 log = logging.getLogger(__name__)
 
+# A small starting vocabulary, shared by recognition hints and spelling
+# corrections. Sound-alike matching remains opt-in for every word.
+OMARCHY_WORDS = (
+    "Omarchy", "Omavoi", "Hyprland", "Quickshell", "Wayland", "Arch Linux",
+    "Neovim", "PipeWire", "WirePlumber", "XWayland", "Ghostty", "Alacritty",
+    "Chromium", "Obsidian", "Fastfetch",
+)
+
 # Rules every mode starts from; a mode overrides only what it cares about.
 _RULE_DEFAULTS: dict[str, Any] = {
     "hallucinations": True,
@@ -244,10 +252,9 @@ DEFAULTS: dict[str, Any] = {
         # heard -> meant. Unlike a decoder prompt this is a guarantee, not a
         # hint. Case-insensitive; the longest key is tried first.
         "rules": {
+            **{name.lower(): name for name in OMARCHY_WORDS},
             "hyperland": "Hyprland",
             "hyper land": "Hyprland",
-            "wayland": "Wayland",
-            "omarchy": "Omarchy",
             "github": "GitHub",
             "gitlab": "GitLab",
             "javascript": "JavaScript",
@@ -255,10 +262,10 @@ DEFAULTS: dict[str, Any] = {
             "kubernetes": "Kubernetes",
             "postgres": "Postgres",
         },
-        # Proper nouns, written only in their correct form. You cannot know
-        # how a model will mangle a name, and for CJK the manglings are an
-        # open set of homophones, so these are matched by sound instead.
-        "names": [],
+        # Give the recognizer the preferred spellings as hints, without
+        # guessing phonetic aliases or rewriting similar-sounding words.
+        "names": [{"name": name, "seed": True, "enabled": False}
+                  for name in OMARCHY_WORDS],
         "names_settings": {
             # Seed the most-used names into the decoder prompt, which is what
             # makes the model produce them rather than fixing them after.

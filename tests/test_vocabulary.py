@@ -111,14 +111,37 @@ def test_migration_plan_is_pure_and_default_corrections_preserved():
     data, issues = v.migration(cfg)
     assert not issues
     assert cfg == before
-    assert len(data['entries']) == 9
-    assert not any(e['recognition_hint'] for e in data['entries'])
+    assert len(data['entries']) == 21
     cfg['dictionary'] = data
     from omavoi.post.rules import apply_dictionary
     for source, target in before['dictionary']['rules'].items():
         for text in [source, source.upper(), f'I use {source}.', f'用{source}开发']:
             assert v.Index(cfg).apply(text)[0] == apply_dictionary(text, before['dictionary']['rules'])[0]
     assert v.migration(cfg) == (data, [])
+
+
+def test_fresh_install_seeds_omarchy_words_without_phonetic_rewrites(home):
+    expected = {
+        'Omarchy', 'Omavoi', 'Hyprland', 'Quickshell', 'Wayland', 'Arch Linux',
+        'Neovim', 'PipeWire', 'WirePlumber', 'XWayland', 'Ghostty', 'Alacritty',
+        'Chromium', 'Obsidian', 'Fastfetch',
+    }
+    cfg = config.load()
+    cfg['dictionary'], issues = v.migration(cfg)
+    assert not issues
+    index = v.Index(cfg)
+    picked, dropped = index.names.seed_split()
+    assert set(picked) == expected
+    assert not dropped
+    assert not any(e['phonetic']['enabled'] for e in cfg['dictionary']['entries'])
+    for spelling in expected:
+        assert index.apply(spelling.lower())[0] == spelling
+        assert index.apply(spelling)[0] == spelling
+    assert index.apply('hyper land and hyperland')[0] == 'Hyprland and Hyprland'
+    ordinary = 'a quick shell, an arch, a ghost and some fish'
+    assert index.apply(ordinary)[0] == ordinary
+    config.write(cfg)
+    assert v.Index(config.load()).names.seed_split() == (picked, [])
 
 
 def test_complex_migration_is_blocked_not_silently_changed():
@@ -172,7 +195,7 @@ def test_save_migrates_once_preserves_backup_and_rejects_stale_write(home, no_se
     assert len(backups) == 1 and backups[0].read_bytes() == original
     with pytest.raises(v.InvalidWord, match='changed_elsewhere'):
         api.mutate('save', {'etag': first['etag'], 'entry': {'text': 'Something'}})
-    assert len(api.snapshot(cfg)['entries']) == 10
+    assert len(api.snapshot(cfg)['entries']) == len(first['entries']) + 1
     assert 'Something' not in [e['text'] for e in config.load()['dictionary']['entries']]
 
 

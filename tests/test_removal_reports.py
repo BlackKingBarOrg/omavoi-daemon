@@ -30,6 +30,7 @@ def _run(action, names):
 
 
 def test_removing_a_name_that_is_not_there_fails(home, capsys):
+    existing = _names()
     assert _run("add", ["Alice"]) == 0
     capsys.readouterr()
 
@@ -37,10 +38,11 @@ def test_removing_a_name_that_is_not_there_fails(home, capsys):
     out = capsys.readouterr().out
     assert "nosuchname" in out, "it must say which one"
     assert "removed" not in out, 'nothing was removed; do not print "removed 0"'
-    assert _names() == ["Alice"], "it removed something it should not have"
+    assert _names() == [*existing, "Alice"], "it removed something it should not have"
 
 
 def test_a_partial_removal_does_the_work_and_still_reports(home, capsys):
+    existing = _names()
     assert _run("add", ["Alice", "Bob"]) == 0
     capsys.readouterr()
 
@@ -48,14 +50,15 @@ def test_a_partial_removal_does_the_work_and_still_reports(home, capsys):
     out = capsys.readouterr().out
     assert "removed 1" in out, "Alice should have gone"
     assert "nosuchname" in out, "and the miss should be named"
-    assert _names() == ["Bob"]
+    assert _names() == [*existing, "Bob"]
 
 
 def test_removing_a_name_that_is_there_succeeds(home, capsys):
+    existing = _names()
     assert _run("add", ["Alice"]) == 0
     capsys.readouterr()
     assert _run("rm", ["Alice"]) == 0
-    assert _names() == []
+    assert _names() == existing
 
 
 def test_rm_with_no_names_is_usage(home, capsys):
