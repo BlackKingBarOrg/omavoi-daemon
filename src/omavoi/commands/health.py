@@ -39,10 +39,14 @@ def _print_entry(entry: dict[str, Any], verbose: bool) -> None:
               f"decode {asr_info.get('decode_seconds', 0):.2f}s  RTF {asr_info.get('rtf', 0):.3f}  "
               f"lang {asr_info.get('language', '?')}")
         for seg in asr_info.get("segments", []):
-            flag = RED if seg.get("avg_logprob", 0) < -1.0 else DIM
+            logprob = seg.get("avg_logprob")
+            no_speech = seg.get("no_speech_prob")
+            flag = RED if logprob is not None and logprob < -1.0 else DIM
+            logprob_text = f"{logprob:6.2f}" if logprob is not None else "   n/a"
+            no_speech_text = f"{no_speech:.3f}" if no_speech is not None else "n/a"
             print(f"            {flag}[{seg.get('start', 0):5.2f}-{seg.get('end', 0):5.2f}] "
-                  f"logprob={seg.get('avg_logprob', 0):6.2f} "
-                  f"no_speech={seg.get('no_speech_prob', 0):.3f}{RESET} {seg.get('text', '')}")
+                  f"logprob={logprob_text} "
+                  f"no_speech={no_speech_text}{RESET} {seg.get('text', '')}")
     raw = entry.get("raw_text") or ""
     if raw and raw != text:
         print(f"          {DIM}raw{RESET}     {raw}")

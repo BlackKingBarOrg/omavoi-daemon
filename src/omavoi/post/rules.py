@@ -6,10 +6,14 @@ exactly which step turned hyperland into Hyprland — a prompt cannot show you t
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
+
+from ..asr.base import Segment
 
 # CJK ideographs, kana, hangul — everything that wants a space beside Latin.
 _CJK = r"㐀-䶿一-鿿぀-ゟ゠-ヿ가-힯"
@@ -34,44 +38,31 @@ _LATIN_THEN_CJK = re.compile(rf"([{_LATIN}])([{_CJK}])")
 _SENTENCE_SPLIT = re.compile(r"(?<=[。．.！!？?；;])(?!$)")
 _TRAILING_PUNCT = re.compile(r"[。．.，,、；;：:！!？?\s]+$")
 _WS = re.compile(r"[^\S\n]{2,}")
-_TERMINAL = "。．.！!？?；;…"
-# whisper.cpp writes subtitle-style dashes at the head of a cue.
-_CUE_DASH = re.compile(r"^[-–—]\s*")
-_CJK_CHAR = re.compile(rf"[{_CJK}]")
-
-
-def _script_pause(chunk: str) -> str:
-    """The pause mark for whatever script the chunk is written in.
-
-    A comma, not a full stop. Whisper cuts segments where the speaker paused,
-    and a pause is not a sentence end — "我今天想说的是。这个功能" is wrong
-    where "我今天想说的是，这个功能" is right. Where the speaker really did
-    finish a sentence, whisper has already written the full stop itself.
-    """
-    return "，" if _CJK_CHAR.search(chunk[-4:] or chunk) else ","
+# Hangul uses word spaces even though it shares CJK/Latin spacing rules above.
+_UNSPACED_CHAR = re.compile(r"[㐀-䶿一-鿿぀-ゟ゠-ヿ]")
 
 
 def normalise_boundaries(text: str, *, newlines: str = "space",
-                         add_punctuation: bool = True) -> str:
-    """Turn segment breaks into punctuation instead of line breaks.
+                         add_punctuation: bool = False) -> str:
+    """Fold text lines without inventing punctuation or deleting content.
 
-    Whisper cuts text the way subtitles are cut, so one spoken sentence can
-    arrive as several lines. Pasted into a chat window those lines are not
-    merely ugly: a newline is what sends the message.
+    A subtitle boundary can fall inside a word: it is not evidence of a
+    pause. ASR adapters must preserve token spacing when joining segments;
+    once that spacing has been stripped, this generic text rule cannot tell
+    a split word from two words. Real line breaks follow the selected policy.
+
+    add_punctuation is accepted for compatibility only. Even when True, a
+    line break alone cannot justify inserting a comma.
     """
     if newlines == "keep" or "\n" not in text:
         return text
 
-    chunks = [_CUE_DASH.sub("", c.strip()) for c in text.split("\n")]
-    chunks = [c for c in chunks if c]
+    chunks = [c.strip() for c in text.split("\n") if c.strip()]
     if not chunks:
         return ""
 
     out = ""
-    for i, chunk in enumerate(chunks):
-        last = i == len(chunks) - 1
-        if add_punctuation and not last and chunk[-1] not in _TERMINAL + "，,、":
-            chunk += _script_pause(chunk)
+    for chunk in chunks:
         if not out:
             out = chunk
             continue
@@ -79,7 +70,8 @@ def normalise_boundaries(text: str, *, newlines: str = "space",
         # Full-width punctuation carries its own trailing space in the glyph,
         # so anything after it is set tight — including a Latin word.
         # Two CJK chunks also butt up. Everything else reads as two words.
-        tight = tail in "，。、；：！？…" or (_CJK_CHAR.search(tail) and _CJK_CHAR.search(head))
+        tight = (tail in "，。、；：！？…"
+                 or (_UNSPACED_CHAR.search(tail) and _UNSPACED_CHAR.search(head)))
         out += ("" if tight else " ") + chunk
     return out
 
@@ -119,12 +111,14 @@ def _norm(text: str) -> str:
     return re.sub(r"[\s\W_]+", "", folded, flags=re.UNICODE)
 
 
-def drop_hallucinations(text: str, phrases: list[str]) -> str:
-    """Remove Whisper's stock inventions for silence.
+def drop_hallucinations(text: str, phrases: list[str], *, silence_evidence: bool = False) -> str:
+    """Match stock phrases only after the caller establishes silence.
 
-    Matched per sentence, so a 谢谢观看 you genuinely said inside a longer
-    sentence survives while a bare one is dropped.
+    Every phrase can also be genuine dictation, even as a complete sentence.
+    Text alone cannot distinguish that from a hallucination.
     """
+    if not silence_evidence:
+        return text
     targets = {_norm(p) for p in phrases if p.strip()}
     if not text or not targets:
         return text
@@ -255,12 +249,83 @@ def apply_punctuation_policy(text: str, policy: str) -> str:
     return _TRAILING_PUNCT.sub("", text) if policy == "strip" else text
 
 
+def _filter_silent_segments(
+    text: str,
+    segments: Sequence[Segment],
+    post: dict[str, Any],
+    rules: dict[str, Any],
+    *,
+    quiet: bool,
+) -> tuple[str, list[str]]:
+    """Remove only the text covered by corroborated segment evidence.
+
+    The no-speech probability is not a verdict: confidently decoded text
+    must survive it. Both measurements must be present, finite and agree.
+    The -1.0 log-probability floor is also used by Transcript.warnings().
+
+    Backends may return a full transcript that differs from their segment
+    text. Require exact, ordered text coverage (apart from whitespace) before
+    assigning segment scores to any characters. On a mismatch, keep it all.
+    """
+    spans: list[tuple[int, int, int, Segment]] = []
+    cursor = 0
+    for index, segment in enumerate(segments, 1):
+        part = segment.text.strip()
+        if not part:
+            continue
+        start = text.find(part, cursor)
+        if start < 0 or text[cursor:start].strip():
+            return text, []
+        end = start + len(part)
+        spans.append((start, end, index, segment))
+        cursor = end
+    if text[cursor:].strip():
+        return text, []
+
+    thresholds = [float(post.get("no_speech_threshold", 0.8))]
+    if quiet:
+        thresholds.append(float(post.get("quiet_no_speech_threshold", 0.5)))
+    active = [value for value in thresholds if math.isfinite(value) and value > 0]
+    if not active:
+        return text, []
+    threshold = min(active)
+
+    chunks: list[str] = []
+    changes: list[str] = []
+    cursor = 0
+    for start, end, index, segment in spans:
+        probability = segment.no_speech_prob
+        logprob = segment.avg_logprob
+        silent = (
+            probability is not None and math.isfinite(probability)
+            and threshold <= probability <= 1.0
+            and logprob is not None and math.isfinite(logprob) and logprob < -1.0
+        )
+        chunks.append(text[cursor:start])
+        if silent:
+            # The phrase list describes a rejected segment; it cannot grant
+            # permission to delete speech. Silence evidence applies to this
+            # segment only, never the rest of the recording.
+            known_phrase = rules.get("hallucinations", True) and drop_hallucinations(
+                segment.text.strip(), post.get("hallucinations", []), silence_evidence=True,
+            ) != segment.text.strip()
+            reason = "hallucination / silence" if known_phrase else "silence"
+            changes.append(
+                f"segment {index}: {reason}, no_speech_prob={probability:.2f}, avg_logprob={logprob:.2f}"
+            )
+        else:
+            chunks.append(text[start:end])
+        cursor = end
+    chunks.append(text[cursor:])
+    return "".join(chunks).strip(), changes
+
+
 def run(
     text: str,
     cfg: dict[str, Any],
     ctx: Context | None = None,
     *,
-    max_no_speech: float | None = None,
+    segments: Sequence[Segment] = (),
     quiet: bool = False,
 ) -> PostResult:
     raw = text
@@ -273,49 +338,28 @@ def run(
         result.rejected = "empty"
         return result
 
-    # The model's own verdict on whether it heard anything outranks any
-    # string matching we could do.
-    threshold = float(post.get("no_speech_threshold", 0.8))
-    quiet_threshold = float(post.get("quiet_no_speech_threshold", 0.5))
-    if max_no_speech is not None:
-        if threshold > 0 and max_no_speech >= threshold:
-            result.text = ""
-            result.rejected = f"no_speech_prob={max_no_speech:.2f} >= {threshold}"
-            return result
-        if quiet and quiet_threshold > 0 and max_no_speech >= quiet_threshold:
-            result.text = ""
-            result.rejected = (
-                f"no_speech_prob={max_no_speech:.2f} >= {quiet_threshold} on a take "
-                "already below the quiet threshold"
-            )
-            return result
-
     ctx = ctx or Context()
     rules = ctx.rules
-    step = result.text
+    step, removed = _filter_silent_segments(result.text, segments, post, rules, quiet=quiet)
+    result.changes.extend(removed)
+    if not step:
+        result.text = ""
+        result.rejected = "all text segments rejected: " + "; ".join(removed)
+        return result
 
     after = normalise_boundaries(
         step,
         newlines=str(post.get("newlines", "space")),
-        add_punctuation=bool(post.get("add_missing_punctuation", True)),
     )
     if after != step:
-        result.changes.append("line breaks → punctuation")
+        result.changes.append("line breaks folded")
         step = after
 
     if rules.get("hallucinations", True):
-        after = drop_hallucinations(step, post.get("hallucinations", []))
-        if after != step:
-            result.changes.append("hallucinations")
-            step = after
         after = dedupe_sentences(step)
         if after != step:
             result.changes.append("deduped")
             step = after
-        if not step:
-            result.text = ""
-            result.rejected = "the whole take was a known hallucination phrase"
-            return result
 
     if rules.get("fillers", True):
         # Gathered by script, not by language: strip_fillers matches the

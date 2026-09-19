@@ -331,14 +331,21 @@ class WhisperCppBackend:
                 start=_seconds(seg, "start", "t0"),
                 end=_seconds(seg, "end", "t1"),
                 text=str(seg.get("text", "")),
-                avg_logprob=float(seg.get("avg_logprob", 0.0) or 0.0),
-                no_speech_prob=float(seg.get("no_speech_prob", 0.0) or 0.0),
+                avg_logprob=(float(seg["avg_logprob"])
+                             if seg.get("avg_logprob") is not None else None),
+                no_speech_prob=(float(seg["no_speech_prob"])
+                                if seg.get("no_speech_prob") is not None else None),
                 compression_ratio=float(seg.get("compression_ratio", 0.0) or 0.0),
                 temperature=float(seg.get("temperature", 0.0) or 0.0),
             )
             for seg in payload.get("segments", []) or []
         ]
-        text = "\n".join(s.text.strip() for s in segments if s.text.strip())
+        # Segment boundaries can split a word ("mac" / "OS", "中" / "文").
+        # Keep the decoder's own spaces: a new word has a space in its text,
+        # while a continuation does not. Stripping every segment loses that
+        # distinction. The top-level text is no substitute: whisper-server
+        # also inserts a subtitle newline after every segment there.
+        text = "".join(s.text for s in segments).strip()
         if not text:
             text = str(payload.get("text", "")).strip()
         return Transcript(

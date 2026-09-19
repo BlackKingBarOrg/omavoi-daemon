@@ -24,8 +24,10 @@ class Segment:
     start: float
     end: float
     text: str
-    avg_logprob: float = 0.0
-    no_speech_prob: float = 0.0
+    # None means the backend did not report this measurement. Zero is a
+    # real measurement and must not stand in for missing evidence.
+    avg_logprob: float | None = None
+    no_speech_prob: float | None = None
     compression_ratio: float = 0.0
     temperature: float = 0.0
 
@@ -51,21 +53,24 @@ class Transcript:
         return self.decode_seconds / self.audio_seconds if self.audio_seconds else 0.0
 
     @property
-    def min_avg_logprob(self) -> float:
+    def min_avg_logprob(self) -> float | None:
         """The least confident segment — the one most likely to have dropped words."""
-        return min((s.avg_logprob for s in self.segments), default=0.0)
+        return min((s.avg_logprob for s in self.segments if s.avg_logprob is not None), default=None)
 
     @property
-    def max_no_speech(self) -> float:
-        return max((s.no_speech_prob for s in self.segments), default=0.0)
+    def max_no_speech(self) -> float | None:
+        """Diagnostic only: one silent segment says nothing about the rest."""
+        return max((s.no_speech_prob for s in self.segments if s.no_speech_prob is not None), default=None)
 
     def warnings(self, *, logprob_floor: float = -1.0) -> list[str]:
         """Human-readable reasons to distrust this transcript."""
         out: list[str] = []
-        if self.segments and self.min_avg_logprob < logprob_floor:
-            out.append(f"low confidence: avg_logprob={self.min_avg_logprob:.2f} — words may be wrong or missing")
-        if self.max_no_speech > 0.6:
-            out.append(f"probably silence: no_speech_prob={self.max_no_speech:.2f} — the text may be invented")
+        minimum = self.min_avg_logprob
+        maximum = self.max_no_speech
+        if minimum is not None and minimum < logprob_floor:
+            out.append(f"low confidence: avg_logprob={minimum:.2f} — words may be wrong or missing")
+        if maximum is not None and maximum > 0.6:
+            out.append(f"a segment may be silence: no_speech_prob={maximum:.2f} — inspect its text")
         return out
 
     def as_dict(self) -> dict[str, Any]:

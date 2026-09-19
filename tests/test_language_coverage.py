@@ -91,20 +91,19 @@ def test_the_shipped_llm_fits_beside_the_shipped_speech_model():
 ])
 def test_a_silent_take_is_caught_in_every_interface_language(phrase, lang):
     phrases = config.DEFAULTS["post"]["hallucinations"]
-    assert drop_hallucinations(phrase, phrases) == "", lang
+    assert drop_hallucinations(phrase, phrases, silence_evidence=True) == "", lang
     # With punctuation, and inside a longer sentence, which must survive.
-    assert drop_hallucinations(phrase + "!", phrases) == "", lang
+    assert drop_hallucinations(phrase + "!", phrases, silence_evidence=True) == "", lang
     kept = f"I said {phrase} out loud on purpose"
     assert drop_hallucinations(kept, phrases) == kept, lang
 
 
-def test_the_two_that_escaped_on_this_machine_are_covered():
-    """Measured, not supposed: over 291 takes on a turbo model these two
-    reached the window, because a turbo model's no_speech_prob is 0 and the
-    phrase list was the only guard left."""
+def test_known_phrases_do_not_replace_missing_silence_evidence():
+    """A list entry must not turn an unknown confidence score into silence."""
     phrases = config.DEFAULTS["post"]["hallucinations"]
     for phrase in ("字幕志愿者 李宗盛", "谢谢大家!"):
-        assert drop_hallucinations(phrase, phrases) == "", phrase
+        assert drop_hallucinations(phrase, phrases) == phrase
+        assert drop_hallucinations(phrase, phrases, silence_evidence=True) == "", phrase
 
 
 def test_a_filler_list_holds_nothing_that_is_a_word():
@@ -282,5 +281,4 @@ def test_the_llm_newline_fold_follows_the_script(text, want):
     """
     from omavoi.post.rules import normalise_boundaries
 
-    assert normalise_boundaries(text, newlines="space",
-                                add_punctuation=False) == want
+    assert normalise_boundaries(text, newlines="space") == want

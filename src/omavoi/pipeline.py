@@ -219,7 +219,7 @@ class Pipeline:
             transcript.text,
             cfg,
             post.Context(win.cls, win.title, mode.rules),
-            max_no_speech=transcript.max_no_speech,
+            segments=transcript.segments,
             quiet=quiet,
         )
         entry["post"] = result.as_dict()
@@ -245,8 +245,8 @@ class Pipeline:
         final = self._run_steps(result.text, mode, entry) if mode.steps else result.text
 
         # Fold newlines last, whoever produced them, unless the mode says
-        # keep. The rule that turns a segment break into punctuation runs
-        # before the LLM, so an LLM asked for two lines hands them straight
+        # keep. The initial newline fold runs before the LLM, so an LLM
+        # asked for two lines hands them straight
         # to injection. That was once the reason to fold here regardless: a
         # newline typed into a chat window is the send key, and a bilingual
         # take posted only its first line. Folding made the second line
@@ -262,9 +262,7 @@ class Pipeline:
                 # rule normalise_boundaries already applies to the raw
                 # transcript, while this line put a space into
                 # 这是第一句。这是第二句。 on the way out of an LLM step.
-                # add_punctuation off: the model wrote whole sentences.
-                joined = post.normalise_boundaries(
-                    final, newlines="space", add_punctuation=False)
+                joined = post.normalise_boundaries(final, newlines="space")
             else:
                 # An explicit joiner is the one that was asked for.
                 joined = re.sub(r"\s*\n+\s*", mode.joiner, final).strip()

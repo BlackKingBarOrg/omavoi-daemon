@@ -272,19 +272,15 @@ DEFAULTS: dict[str, Any] = {
     },
     "post": {
         "enabled": True,
-        # Reject the whole transcript when the model itself says it heard
-        # nothing. Its own verdict beats any string matching.
-        # Whisper segments text the way subtitles are cut, one line each. Left
-        # alone, a sentence arrives as several lines — and in a chat window a
-        # newline can send the message. So boundaries become punctuation.
+        # Fold actual line breaks when requested. ASR segment boundaries are
+        # joined by the backend with their original spacing, not punctuation.
         "newlines": "space",              # space | keep
-        "add_missing_punctuation": True,
+        # Filter one segment at a time, and only with a measured no-speech
+        # probability plus low decoding confidence. Missing measurements
+        # never authorize deletion; one silent segment cannot drop a take.
         "no_speech_threshold": 0.8,
-        # A quiet take *and* a raised no_speech is silence almost every time,
-        # while either signal alone is too weak to reject on: a strict
-        # threshold lets "Thank you." through, and a loose one eats real
-        # softly-spoken words. So this lower bound applies only below
-        # audio.warn_rms_dbfs.
+        # This lower probability bound applies below audio.warn_rms_dbfs;
+        # low decoding confidence is still required on the affected segment.
         "quiet_no_speech_threshold": 0.5,
         # Fillers, split by how the text is written rather than by language:
         # a space-separated script can be matched on a word boundary, and one
@@ -313,18 +309,9 @@ DEFAULTS: dict[str, Any] = {
         # be worse than leaving it off.
         "fillers_th": [],
         "fillers_vi": [],
-        # What whisper writes when it hears nothing: the subtitle credits and
-        # sign-offs its training data is full of. Matched per sentence and
-        # whole, after folding away punctuation, spacing and case — so a
-        # 谢谢观看 said inside a longer sentence survives and a bare one goes.
-        #
-        # This covers the languages the console offers, which it did not:
-        # seven English entries, five Chinese, one Japanese and one Russian,
-        # for an interface that speaks eight. The cost of a wrong entry here
-        # is only that it never fires — a subtitle credit is not a sentence
-        # anyone dictates — which is the opposite of the filler lists above,
-        # where a wrong entry deletes a real word. So imperfect recall of an
-        # exact credit string is worth having; a guessed filler is not.
+        # Common inventions on silence, used to describe segments rejected
+        # with acoustic/decoding evidence. Any of these can also be genuine
+        # dictation, so a matching phrase alone must never delete text.
         "hallucinations": [
             # en
             "Thanks for watching!",
@@ -696,6 +683,10 @@ def validate(cfg: dict[str, Any]) -> list[str]:
     from . import asr
 
     problems: list[str] = []
+
+    if "add_missing_punctuation" in cfg.get("post", {}):
+        problems.append("post.add_missing_punctuation is retired and ignored: "
+                        "line breaks do not imply spoken punctuation")
 
     if asr.canonical(cfg["speech"]["backend"]) is None:
         problems.append(f"speech.backend={cfg['speech']['backend']!r} is not a known engine")

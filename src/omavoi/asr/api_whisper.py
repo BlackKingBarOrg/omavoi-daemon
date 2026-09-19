@@ -185,8 +185,8 @@ class ApiWhisperBackend:
                 start=float(s.get("start", 0.0)),
                 end=float(s.get("end", 0.0)),
                 text=str(s.get("text", "")),
-                avg_logprob=float(s.get("avg_logprob", 0.0) or 0.0),
-                no_speech_prob=float(s.get("no_speech_prob", 0.0) or 0.0),
+                avg_logprob=float(s["avg_logprob"]) if s.get("avg_logprob") is not None else None,
+                no_speech_prob=float(s["no_speech_prob"]) if s.get("no_speech_prob") is not None else None,
                 compression_ratio=float(s.get("compression_ratio", 0.0) or 0.0),
                 temperature=float(s.get("temperature", 0.0) or 0.0),
             )

@@ -30,6 +30,7 @@ from __future__ import annotations
 import pytest
 
 from omavoi import config
+from omavoi.asr.base import Segment
 from omavoi.post import rules as R
 
 ZH = ["嗯", "呃", "那个", "就是", "然后"]
@@ -102,11 +103,12 @@ def test_the_repeat_loop_still_collapses(text, want):
     assert R.dedupe_sentences(text) == want
 
 
-def test_a_hallucination_goes_only_when_it_is_the_whole_sentence():
+def test_a_hallucination_match_requires_silence_evidence():
     phrases = ["谢谢观看", "Thanks for watching."]
-    assert R.drop_hallucinations("谢谢观看", phrases) == ""
-    assert R.drop_hallucinations("谢谢观看。", phrases) == ""
-    assert R.drop_hallucinations("真的结束了。谢谢观看。", phrases) == "真的结束了。"
+    assert R.drop_hallucinations("谢谢观看。", phrases) == "谢谢观看。"
+    assert R.drop_hallucinations("谢谢观看", phrases, silence_evidence=True) == ""
+    assert R.drop_hallucinations("谢谢观看。", phrases, silence_evidence=True) == ""
+    assert R.drop_hallucinations("真的结束了。谢谢观看。", phrases, silence_evidence=True) == "真的结束了。"
     # Said inside a longer sentence, it is something the speaker meant.
     kept = "我说的是谢谢观看这四个字"
     assert R.drop_hallucinations(kept, phrases) == kept
@@ -116,22 +118,23 @@ def test_a_hallucination_goes_only_when_it_is_the_whole_sentence():
 
 
 @pytest.mark.parametrize("text,want", [
-    # A pause is a comma, not a full stop: whisper cuts where the speaker
-    # breathed, and it writes the full stop itself where there was one.
-    ("我今天想说的是\n这个功能很好", "我今天想说的是，这个功能很好"),
-    ("one line\ntwo line", "one line, two line"),
-    # whisper.cpp writes subtitle-style dashes at the head of a cue.
-    ("- subtitle dash\n- another cue", "subtitle dash, another cue"),
+    # A text line boundary alone is not evidence of spoken punctuation.
+    ("我今天想说的是\n这个功能很好", "我今天想说的是这个功能很好"),
+    ("中\n文翻译", "中文翻译"),
+    ("one line\ntwo line", "one line two line"),
+    ("- subtitle dash\n- another cue", "- subtitle dash - another cue"),
+    ("--no-color\n-3", "--no-color -3"),
+    ("첫 번째\n문장", "첫 번째 문장"),
     # Already terminated, so nothing is added and the two are set tight.
     ("已经结束了。\n下一句", "已经结束了。下一句"),
     ("trailing\n\n\n", "trailing"),
 ])
-def test_segment_breaks_become_punctuation(text, want):
+def test_line_breaks_fold_without_inventing_punctuation(text, want):
     assert R.normalise_boundaries(text) == want
 
 
 def test_newlines_can_be_kept():
-    text = "one\ntwo"
+    text = "one\n\ntwo"
     assert R.normalise_boundaries(text, newlines="keep") == text
 
 
@@ -215,17 +218,18 @@ def test_an_empty_take_is_rejected(home):
     assert R.run("   ", cfg, ctx).rejected == "empty"
 
 
-def test_a_take_that_is_only_a_hallucination_is_rejected(home):
+def test_a_known_phrase_is_preserved_without_silence_evidence(home):
     cfg, ctx = _ctx()
     out = R.run("谢谢观看", cfg, ctx)
-    assert out.text == ""
-    assert "hallucination" in out.rejected
+    assert out.text == "谢谢观看"
+    assert not out.rejected
 
 
-def test_the_models_own_verdict_outranks_the_string_matching(home):
-    """no_speech_prob is the one number that knows whether anything was said."""
+def test_a_low_confidence_silent_segment_is_rejected(home):
     cfg, ctx = _ctx()
-    out = R.run("something", cfg, ctx, max_no_speech=0.99)
+    out = R.run("something", cfg, ctx, segments=[
+        Segment(0, 1, "something", avg_logprob=-1.5, no_speech_prob=0.99),
+    ])
     assert out.text == ""
     assert "no_speech_prob" in out.rejected
 
