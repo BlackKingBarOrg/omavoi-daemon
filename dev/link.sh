@@ -76,7 +76,7 @@ if [[ "$MODE" == dev ]]; then
     systemctl --user restart omavoid && say "restarted omavoid"
   else
     say "no omavoid.service — it ships with the plugin, so install that first:"
-    say "  omarchy plugin add https://github.com/bkblab/omavoi --enable --yes"
+    say "  omarchy plugin add https://github.com/BlackKingBarOrg/omavoi --enable --yes"
   fi
 
 elif [[ "$MODE" == real ]]; then

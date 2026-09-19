@@ -310,7 +310,7 @@ def check(cfg: dict[str, Any]) -> Report:
         command=(
             "systemctl --user enable --now omavoid.service" if have_unit else
             "curl -fsSL -o ~/.config/systemd/user/omavoid.service --create-dirs "
-            "https://raw.githubusercontent.com/bkblab/"
+            "https://raw.githubusercontent.com/BlackKingBarOrg/"
             "omavoi/master/omavoid.service"
             " && systemctl --user daemon-reload"
             " && systemctl --user enable --now omavoid.service"

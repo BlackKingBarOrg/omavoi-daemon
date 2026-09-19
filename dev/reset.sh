@@ -136,4 +136,4 @@ leftover="$(find "$HOME" -maxdepth 6 -iname '*omavoi*' \
   || printf '%s\n' "$leftover" | sed 's/^/  leftover: /'
 
 printf '\nInstall again with:\n'
-printf '  omarchy plugin add https://github.com/bkblab/omavoi --enable --yes\n'
+printf '  omarchy plugin add https://github.com/BlackKingBarOrg/omavoi --enable --yes\n'
