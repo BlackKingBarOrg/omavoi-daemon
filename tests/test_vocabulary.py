@@ -144,6 +144,32 @@ def test_fresh_install_seeds_omarchy_words_without_phonetic_rewrites(home):
     assert v.Index(config.load()).names.seed_split() == (picked, [])
 
 
+@pytest.mark.parametrize('dictionary', [
+    {},
+    {'rules': {'acme': 'Acme'}, 'names': ['MyProject']},
+    {'schema_version': 2, 'revision': 0, 'entries': [v.word('MyProject')]},
+])
+def test_saved_personal_dictionary_does_not_inherit_starter_words(home, dictionary):
+    config.write({'dictionary': dictionary})
+    cfg = config.load()
+    data, issues = v.migration(cfg)
+    assert not issues
+    assert not set(config.OMARCHY_WORDS) & {e['text'] for e in data['entries']}
+    if dictionary.get('schema_version') == 2:
+        assert cfg['dictionary'] == dictionary
+    else:
+        assert cfg['dictionary']['rules'] == dictionary.get('rules', {})
+        assert cfg['dictionary']['names'] == dictionary.get('names', [])
+
+
+def test_first_dictionary_in_existing_settings_gets_starter_words(home):
+    config.write({'ui': {'language': 'zh'}})
+    cfg = config.load()
+    cfg['dictionary'], issues = v.migration(cfg)
+    assert not issues
+    assert set(v.Index(cfg).names.seed_split()[0]) == set(config.OMARCHY_WORDS)
+
+
 def test_complex_migration_is_blocked_not_silently_changed():
     cfg = config.defaults()
     cfg['dictionary']['rules'] = {'A': 'B', 'B': 'C'}

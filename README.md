@@ -170,6 +170,9 @@ Omavoi, Hyprland, Quickshell, Wayland, Arch Linux, Neovim, PipeWire,
 WirePlumber, XWayland, Ghostty, Alacritty, Chromium, Obsidian, and Fastfetch.
 Their capitalization is corrected without enabling sound-based matching.
 The existing general programming spellings are also retained.
+This is a starting vocabulary for new installations, not a list merged into
+saved personal dictionaries. Existing words, edits and deletions remain the
+user's own; changing the shipped defaults does not change their word list.
 
 The console uses `omavoi vocabulary list --json` and the transactional
 `save`, `remove`, `restore`, and `preview` commands with `--json-input`.

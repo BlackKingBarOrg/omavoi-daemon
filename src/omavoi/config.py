@@ -493,6 +493,13 @@ def load(path: Path | None = None) -> dict[str, Any]:
             validate_words(merged["dictionary"]["entries"])
         except (InvalidWord, KeyError, TypeError) as exc:
             raise SystemExit(f"Invalid dictionary in {path}: {exc}") from exc
+    elif "dictionary" in user:
+        # Starter words belong to a new dictionary. A saved personal list,
+        # including an empty one, must not acquire new words on upgrade.
+        merged["dictionary"] = _deep_merge({
+            "rules": {}, "names": [],
+            "names_settings": copy.deepcopy(DEFAULTS["dictionary"]["names_settings"]),
+        }, user["dictionary"])
     # A user-defined mode should not have to restate every rule.
     for name, mode in merged.get("modes", {}).items():
         if isinstance(mode, dict):
