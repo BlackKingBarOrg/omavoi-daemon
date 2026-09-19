@@ -150,7 +150,9 @@ class ApiWhisperBackend:
         seeded = prompt if prompt is not None else self.default_prompt
 
         data: dict[str, str] = {"model": self.model_name, "response_format": self.response_format}
-        if lang:
+        # Unlike whisper.cpp, OpenAI-compatible APIs detect language when
+        # this field is omitted; the literal "auto" is not an ISO code.
+        if lang and lang != "auto":
             data["language"] = lang
         if seeded:
             data["prompt"] = seeded

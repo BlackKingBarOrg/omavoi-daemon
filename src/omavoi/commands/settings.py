@@ -174,16 +174,20 @@ def _why_not_that_language(key: str, value: str) -> str:
     was written happily — then the endpoint either 400s or quietly ignores it,
     on a take, minutes later, with nothing pointing back here.
 
-    A shape check and not a list: the 99 codes whisper knows are whisper's,
-    not ours, and hardcoding them here would be a copy that goes stale. The
-    shape catches every realistic mistake — a language name, a locale, a
-    region suffix — and lets through only invented two-letter codes, which the
-    engine itself will then name.
+    Modes use the same catalogue as the language picker, including the two
+    application-level Chinese script preferences. The legacy global backend
+    setting still accepts ISO-shaped codes for custom remote providers.
     """
     if key != "speech.language" and not (
         key.startswith("modes.") and key.endswith(".language")
     ):
         return ""
+    if key.startswith("modes."):
+        from ..input_language import valid
+
+        if valid(value):
+            return ""
+        return f"{value!r} is not a supported input language; use a Whisper code, zh-Hans, zh-Hant, or auto"
     if value in ("", "auto") or (2 <= len(value) <= 3 and value.isalpha() and value.islower()):
         return ""
     return (

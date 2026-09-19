@@ -12,7 +12,7 @@ import json
 import sys
 from typing import Any
 
-from .. import config, i18n, ipc, models
+from .. import config, i18n, input_language, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
 _MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key", "newline_key")
@@ -169,10 +169,19 @@ def cmd_mode(args: argparse.Namespace) -> int:
             for name in modes_mod.names(cfg):
                 mode = modes_mod.resolve(cfg, None, forced=name)
                 raw = table.get(name, {})
+                language = mode.language or str(cfg["speech"].get("language", ""))
+                speech_model = mode.speech_model or str(cfg["speech"]["model"])
+                if cfg["speech"].get("backend") == "api":
+                    from ..asr.api_whisper import ApiWhisperBackend
+
+                    speech_model = ApiWhisperBackend(cfg).model_name
                 wants = _mode_wants(cfg, mode)
                 fit = gpu.fits_chain(wants, live,
                                      _reclaimable_mb(engines, {w["key"] for w in wants}))
                 rows.append(mode.as_dict() | {
+                    "language": language,
+                    "input_languages": input_language.options(
+                        speech_model, i18n.ui_lang(cfg), language),
                     "match": list(raw.get("match") or []),
                     "prompt": str(raw.get("prompt", "") or ""),
                     "paste_key": str(raw.get("paste_key", "") or ""),
@@ -314,6 +323,10 @@ def cmd_mode(args: argparse.Namespace) -> int:
             print(f"{RED}unknown field {field!r}; one of {', '.join(_MODE_FIELDS)} "
                   f"or rules.<{'|'.join(_RULE_KEYS)}>{RESET}",
                   file=sys.stderr)
+            return 1
+        if field == "language" and not input_language.valid(value):
+            print(f"{RED}{value!r} is not a supported input language; use a Whisper language code, "
+                  f"zh-Hans, zh-Hant, or auto{RESET}", file=sys.stderr)
             return 1
         # Refused where it is written, not warned about on the next load: a
         # mode whose speech_model does not exist keeps the previous weights and

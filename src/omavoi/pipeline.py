@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from . import asr, modes, notify, post, vocabulary
+from . import asr, input_language, modes, notify, post, vocabulary
 from . import names as names_mod
 from .audio import Capture
 from .history import History
@@ -205,7 +205,7 @@ class Pipeline:
             transcript = self.backend.transcribe(
                 capture.samples,
                 capture.rate,
-                language=mode.language or None,
+                language=input_language.recognition_language(mode.language or cfg["speech"].get("language", "")),
                 prompt=prompt or None,
             )
         except Exception as exc:
@@ -239,6 +239,22 @@ class Pipeline:
                 entry["post"]["changes"].append(
                     "names: " + ", ".join(h.found + "->" + h.name for h in hits))
                 result.text = fixed
+        # Normalize the transcript before an optional LLM translates it.
+        # Retain the original ASR text and its confidence segments, and keep
+        # the user's dictionary spellings ahead of script preferences.
+        if result.text and not result.rejected and mode.language in input_language.SCRIPTS:
+            protected = ()
+            if mode.rules.get("vocabulary", mode.rules.get("names", True)):
+                protected = tuple(e["text"] if unified else e.name for e in index.entries)
+            try:
+                converted = input_language.convert(result.text, mode.language, protected)
+                if converted != result.text:
+                    entry["post"]["changes"].append(f"Chinese script: {mode.language}")
+                    result.text = converted
+                    entry["post"]["changed"] = result.changed
+            except Exception as exc:
+                log.exception("Chinese script conversion failed; keeping transcript")
+                warnings.append(f"Chinese script conversion failed; kept original text: {exc}")
         entry["rules_text"] = result.text
         if result.rejected:
             entry["text"] = ""

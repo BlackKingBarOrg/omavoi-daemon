@@ -125,7 +125,7 @@ writes them, `omavoi mode show <mode>` prints them:
 | field | values | what it decides |
 |---|---|---|
 | `match` | window classes (`omavoi mode match <mode> wechat`) | which windows pick this mode, once `omavoi mode auto on` |
-| `language` | `""`, `en`, `zh`, … | what the speech model is told; empty detects per take |
+| `language` | `auto`, `en`, `zh-Hans`, `zh-Hant`, … | primary spoken language; `auto` detects per take without script conversion |
 | `speech_model` | a `ggml:` key | weights swapped in when this mode is in use |
 | `prompt` | text | the decoder hint — a nudge, not a guarantee |
 | `inject` | `auto`, `wtype`, `clipboard`, `xdotool` | how the text reaches the window |
@@ -135,6 +135,17 @@ writes them, `omavoi mode show <mode>` prints them:
 | `rules.punctuation` | `keep`, `strip` | trailing punctuation — a command line wants none |
 | `rules.hallucinations` … `rules.cjk_spacing` | `on`, `off` | the deterministic passes |
 | `steps` | `omavoi mode step <mode> add <llm> [prompt]` | zero or more LLM passes, in order; a failed step keeps the text it was given |
+
+The language picker searches localized names, English names and language codes.
+Chinese (Simplified) and Chinese (Traditional) both pass `zh` to recognition,
+then normalize the transcript locally with OpenCC before any LLM steps. This
+does not translate other languages or change regional vocabulary. Code, URLs,
+paths, dictionary spellings and clauses containing Japanese kana are preserved.
+Han-only Japanese names cannot be reliably distinguished from Chinese; add an
+exact spelling to the dictionary when it must be preserved. Raw recognition
+text remains in history. Existing `zh` settings keep their no-conversion behavior;
+empty legacy settings can still inherit `speech.language`. Selecting `auto`
+explicitly overrides that global setting.
 
 The mode that turns a dictated sentence into the sentence plus its Thai
 translation, for WeChat, is four of those:
