@@ -14,3 +14,8 @@ design/omavoi-interface.html
 # git+...`, which is how the daemon is actually installed, resolves fresh and
 # never reads it, so committing it would only pin dev environments.
 uv.lock
+
+# Claude Code's worktrees live here. Each one is a checkout of this repository
+# on its own branch, with its own uncommitted work; committing them would nest
+# a checkout inside the checkout and carry someone's in-progress edits with it.
+.claude/
