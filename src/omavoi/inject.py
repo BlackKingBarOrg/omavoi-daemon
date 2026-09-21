@@ -59,6 +59,7 @@ class InjectResult:
     # record, "route=clipboard ok=True" says nothing about which of the two
     # halves failed.
     paste_via: str = ""
+    # Requested characters, not a receipt from the focused application.
     chars: int = 0
 
     def as_dict(self) -> dict[str, Any]:
@@ -73,9 +74,10 @@ class InjectResult:
 class PartiallyTyped(RuntimeError):
     """Typing failed part-way: `remaining` is the text not yet delivered.
 
-    Typing goes line by line now, with a key between lines, so a failure can
-    land after the first line is already in the window. Retrying with the
-    whole text would type that line twice; the retry gets the remainder.
+    Typing can fail after completed lines or wtype batches. Retrying with
+    the whole text would repeat those batches; the retry gets the remainder.
+    A subprocess exit does not acknowledge receipt by the target app, and
+    delivery within the failing batch is unknown.
     """
 
     def __init__(self, remaining: str, cause: Exception) -> None:
@@ -89,6 +91,14 @@ class PartiallyTyped(RuntimeError):
 _KEYSYMS = {"RETURN": "Return", "ENTER": "Return", "KP_ENTER": "KP_Enter",
             "SPACE": "space", "TAB": "Tab", "ESCAPE": "Escape", "ESC": "Escape",
             "BACKSPACE": "BackSpace", "DELETE": "Delete"}
+
+# wtype's stdin reader uploads a new keymap every 100 Unicode characters.
+# Hyprland 0.56.2's input-method grab caches by keyboard identity, so with
+# Fcitx in the path, characters added after the first map can disappear.
+# Give each batch its own virtual keyboard with a complete map before typing.
+# 64 stays below that boundary and avoids
+# allocating high keycodes such as KEY_SYSRQ (99) for diverse CJK text.
+_WTYPE_BATCH_CHARS = 64
 
 class Injector:
     def __init__(self, cfg: dict[str, Any]) -> None:
@@ -249,7 +259,12 @@ class Injector:
                 # What is still owed: this line too if its typing failed,
                 # otherwise the lines after it. A retry types that and only
                 # that. Nothing delivered yet is an ordinary failure.
-                owed = lines[i:] if not typed else lines[i + 1:]
+                if isinstance(exc, PartiallyTyped):
+                    # A wtype batch already completed within this line.
+                    # Keep its remainder AND all following lines.
+                    owed = [exc.remaining, *lines[i + 1:]]
+                else:
+                    owed = lines[i:] if not typed else lines[i + 1:]
                 still = "\n".join(owed)
                 if still == text:
                     raise
@@ -290,9 +305,21 @@ class Injector:
         if self.wtype_delay_ms:
             argv += ["-d", str(self.wtype_delay_ms)]
         argv.append("-")
-        proc = subprocess.run(argv, input=text.encode(), capture_output=True, timeout=30, check=False)
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip() or "wtype exited non-zero")
+        for offset in range(0, len(text), _WTYPE_BATCH_CHARS):
+            batch = text[offset:offset + _WTYPE_BATCH_CHARS]
+            try:
+                # Bound characters, not UTF-8 bytes: a code point must never
+                # be split across processes. Keep the configured per-key
+                # delay usable even when a batch takes longer than 30 s.
+                timeout = max(30.0, len(batch) * max(0, self.wtype_delay_ms) / 1000 + 5.0)
+                proc = subprocess.run(argv, input=batch.encode(), capture_output=True,
+                                      timeout=timeout, check=False)
+                if proc.returncode != 0:
+                    raise RuntimeError(proc.stderr.decode("utf-8", "replace").strip() or "wtype exited non-zero")
+            except Exception as exc:
+                if offset:
+                    raise PartiallyTyped(text[offset:], exc) from exc
+                raise
 
     def _clipboard(self, text: str, profile: dict[str, Any],
                    paste_via: str = "shortcut") -> None:

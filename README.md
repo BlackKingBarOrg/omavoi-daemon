@@ -197,6 +197,22 @@ each rule changed, per-segment confidences, input level and where the text
 went. "It dropped a word again" becomes "segment 3 came back at avg_logprob
 −1.4".
 
+Long Wayland text is sent in independent batches of at most 64 Unicode
+characters. `wtype` 0.4 changes its stdin keymap every 100 characters, while
+Hyprland 0.56.2's input-method keyboard grab caches the keyboard identity
+without checking for map changes. In a session with Fcitx, new characters
+after the first 100 could disappear even though transcription was complete
+and `wtype` exited successfully. Each batch now gets a fresh virtual keyboard;
+completed batches are excluded from fallback retries. Delivery within a
+failing batch is still unknown, and history's injection `ok` and `chars`
+describe subprocess success and requested text, not an application receipt.
+
+To verify actual receipt on a Hyprland desktop with `foot` and `wtype`, run
+`python tools/check_wtype_delivery.py --compare-legacy`. It temporarily opens
+a test terminal, checks long Unicode and multiline text, and restores focus.
+The legacy control reports the old behavior without affecting the pass/fail
+result for the current injector.
+
 ## The input group
 
 The key is read from evdev, below xkb, so the physical key is the same one
