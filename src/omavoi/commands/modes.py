@@ -15,7 +15,7 @@ from typing import Any
 from .. import config, i18n, input_language, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
-_MODE_FIELDS = ("language", "speech_model", "prompt", "inject", "paste_key", "newline_key")
+_MODE_FIELDS = ("language", "script", "speech_model", "prompt", "inject", "paste_key", "newline_key")
 # The rules a mode carries, for `set <mode> rules.<key> <value>`.
 _RULE_FLAGS = ("hallucinations", "fillers", "dictionary", "names", "vocabulary", "cjk_spacing")
 _RULE_KEYS = (*_RULE_FLAGS, "punctuation", "joiner")
@@ -183,7 +183,13 @@ def cmd_mode(args: argparse.Namespace) -> int:
                     "input_languages": input_language.options(
                         speech_model, i18n.ui_lang(cfg), language),
                     "match": list(raw.get("match") or []),
-                    "prompt": str(raw.get("prompt", "") or ""),
+                    # The prompt the decoder is given, which for a mode that
+                    # states none is default's. This reported the mode's own
+                    # entry, so terminal, code and prose showed an empty box
+                    # over a prompt they were sending with every take.
+                    "prompt": mode.prompt,
+                    "prompt_inherited": (name != "default" and "prompt" not in raw
+                                         and mode.prompt != ""),
                     "paste_key": str(raw.get("paste_key", "") or ""),
                     "active": name == active.name,
                     "fits": fit.get("fits", True),
@@ -197,6 +203,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
                               "llm": sorted(cfg.get("llm", {})),
                               "fields": list(_MODE_FIELDS),
                               "switching": dict(switching), "vocabulary_supported": True,
+                              "script_supported": True,
                               "post_enabled": cfg.get("post", {}).get("enabled", True)},
                              ensure_ascii=False, indent=2))
             return 0
@@ -266,7 +273,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
             print(f"{RED}no such mode to copy: {source}{RESET}", file=sys.stderr)
             return 1
         base = copy.deepcopy(table[source]) if source else {
-            "match": [], "language": "", "prompt": "", "inject": "auto",
+            "match": [], "language": "", "script": "", "prompt": "", "inject": "auto",
             "rules": dict(config.DEFAULTS["modes"]["default"]["rules"]), "steps": [],
         }
         base["match"] = [] if not source else list(base.get("match") or [])
@@ -325,9 +332,18 @@ def cmd_mode(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             return 1
         if field == "language" and not input_language.valid(value):
-            print(f"{RED}{value!r} is not a supported input language; use a Whisper language code, "
-                  f"zh-Hans, zh-Hant, or auto{RESET}", file=sys.stderr)
+            print(f"{RED}{value!r} is not a supported input language; use a Whisper language code "
+                  f"or auto{RESET}", file=sys.stderr)
             return 1
+        if field == "script" and not input_language.valid_script(value):
+            print(f"{RED}{value!r} is not a Chinese script; use zh-Hans, zh-Hant, or an empty "
+                  f"value to leave the characters as recognized{RESET}", file=sys.stderr)
+            return 1
+        # zh-Hans was a language until the script got its own field, and a
+        # script or a habit may still say it. It meant both, so it sets both.
+        if field == "language" and value in input_language.SCRIPTS:
+            table[name]["language"], table[name]["script"] = input_language.split(value)
+            return save(f"{name}.language set to zh, {name}.script to {value}")
         # Refused where it is written, not warned about on the next load: a
         # mode whose speech_model does not exist keeps the previous weights and
         # sounds exactly like a mode that works.

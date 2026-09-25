@@ -200,12 +200,13 @@ class Pipeline:
         # server has to load 3 GB of weights first.
         self._stage("decoding")
         prompt = "\n".join(p for p in (mode.prompt, seed) if p)
+        language = input_language.recognition_language(mode.language or cfg["speech"].get("language", ""))
 
         try:
             transcript = self.backend.transcribe(
                 capture.samples,
                 capture.rate,
-                language=input_language.recognition_language(mode.language or cfg["speech"].get("language", "")),
+                language=language,
                 prompt=prompt or None,
             )
         except Exception as exc:
@@ -241,15 +242,18 @@ class Pipeline:
                 result.text = fixed
         # Normalize the transcript before an optional LLM translates it.
         # Retain the original ASR text and its confidence segments, and keep
-        # the user's dictionary spellings ahead of script preferences.
-        if result.text and not result.rejected and mode.language in input_language.SCRIPTS:
+        # the user's dictionary spellings ahead of script preferences. On
+        # auto as well as on Chinese: the script is a preference about the
+        # characters, not about which language was listened for.
+        if (result.text and not result.rejected
+                and input_language.applies(mode.script, language, transcript.language)):
             protected = ()
             if mode.rules.get("vocabulary", mode.rules.get("names", True)):
                 protected = tuple(e["text"] if unified else e.name for e in index.entries)
             try:
-                converted = input_language.convert(result.text, mode.language, protected)
+                converted = input_language.convert(result.text, mode.script, protected)
                 if converted != result.text:
-                    entry["post"]["changes"].append(f"Chinese script: {mode.language}")
+                    entry["post"]["changes"].append(f"Chinese script: {mode.script}")
                     result.text = converted
                     entry["post"]["changed"] = result.changed
             except Exception as exc:

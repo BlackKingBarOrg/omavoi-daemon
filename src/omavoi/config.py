@@ -214,7 +214,11 @@ DEFAULTS: dict[str, Any] = {
         # The fallback. Every other mode inherits anything it omits.
         "default": {
             "match": [],
+            # What the recognizer listens for: "" or auto detects each take.
             "language": "",
+            # Which Chinese characters come out, whatever it listened for:
+            # zh-Hans, zh-Hant, or "" to leave them as recognized.
+            "script": "",
             "prompt": "",
             "inject": "auto",
             "rules": dict(_RULE_DEFAULTS),
@@ -507,7 +511,8 @@ def load(path: Path | None = None) -> dict[str, Any]:
     # Entries from before there were three of them. Reported, not silent: a
     # fold rewrites the steps that named them.
     folded = (migrate(merged) + retire_cuda_engine(merged)
-              + normalise_hotkey(merged) + follow_ui_language(merged))
+              + normalise_hotkey(merged) + follow_ui_language(merged)
+              + split_chinese_script(merged))
     for note in folded:
         log.info("config: %s", note)
     if folded and path.exists():
@@ -661,6 +666,37 @@ def follow_ui_language(cfg: dict[str, Any]) -> list[str]:
     return notes
 
 
+def split_chinese_script(cfg: dict[str, Any]) -> list[str]:
+    """Write a mode's zh-Hans or zh-Hant language as the two settings it was.
+
+    Simplified and Traditional were entries in the language list, so each
+    meant "listen for Chinese" and "write these characters" at once. The
+    script is its own setting now, and the picker no longer lists them: left
+    in the file, the mode would show a language the menu cannot display, and
+    a script chosen beside it could be overruled by a language nobody chose
+    again. Nothing about what a take does changes — Chinese, converted.
+
+    A non-empty script the mode already states is its own and stays.
+    """
+    from .input_language import SCRIPTS
+
+    notes: list[str] = []
+    for name, mode in (cfg.get("modes") or {}).items():
+        if not isinstance(mode, dict):
+            continue
+        old = str(mode.get("language", "") or "")
+        if old not in SCRIPTS:
+            continue
+        mode["language"] = "zh"
+        # Not setdefault: every loaded default mode has a script, the empty
+        # one DEFAULTS merges in, and that must not outrank the user's zh-Hans.
+        if not mode.get("script"):
+            mode["script"] = old
+        notes.append(f"modes.{name}.language {old!r} written as language 'zh' "
+                     f"and script {mode['script']!r}")
+    return notes
+
+
 def migrate(cfg: dict[str, Any]) -> list[str]:
     """Fold stray [llm.*] entries into the three, in place.
 
@@ -755,6 +791,12 @@ def validate(cfg: dict[str, Any]) -> list[str]:
         problems.append("audio.preroll_seconds cannot be negative")
 
     modes = cfg.get("modes", {})
+    from .input_language import valid_script
+
+    for name, mode in modes.items():
+        script = str((mode or {}).get("script", "") or "")
+        if not valid_script(script):
+            problems.append(f"modes.{name}.script={script!r} must be zh-Hans, zh-Hant or empty")
     for name, mode in modes.items():
         want = str((mode or {}).get("speech_model", "") or "")
         if not want:

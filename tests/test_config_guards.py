@@ -18,7 +18,7 @@ def test_every_legal_value_is_accepted(home):
     cfg = config.load()
     checked = 0
     for key in ("speech.backend", "llm.api.backend", "hotkey.mode",
-                "inject.method", "modes.default.inject",
+                "inject.method", "modes.default.inject", "modes.default.script",
                 "modes.default.rules.punctuation", "ui.hud_dwell",
                 "ui.language", "switching.mode",
                 "ui.hud_size", "ui.hud_position", "inject.paste_method",
@@ -36,7 +36,7 @@ def test_every_legal_value_is_accepted(home):
 
 @pytest.mark.parametrize("key", [
     "speech.backend", "llm.api.backend", "hotkey.mode", "inject.method",
-    "modes.default.inject", "modes.default.rules.punctuation",
+    "modes.default.inject", "modes.default.script", "modes.default.rules.punctuation",
     "ui.hud_dwell", "ui.language", "switching.mode", "ui.hud_size", "ui.hud_position", "inject.paste_method",
     "modes.default.paste_method", "speech.api.response_format", "audio.rate",
     "hotkey.force_mode",

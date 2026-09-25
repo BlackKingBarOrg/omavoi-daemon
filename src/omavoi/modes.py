@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import input_language
 from .window import Window
 
 log = logging.getLogger(__name__)
@@ -39,6 +40,10 @@ class Step:
 class Mode:
     name: str
     language: str = ""
+    # zh-Hans or zh-Hant: which Chinese characters the text is written in,
+    # whatever language the recognizer listened for. Empty leaves them as
+    # recognized.
+    script: str = ""
     # Empty means the global speech.model. A mode that names its own gets the
     # weights swapped when it becomes the mode in use.
     speech_model: str = ""
@@ -66,6 +71,7 @@ class Mode:
             "name": self.name,
             "matched_on": self.matched_on,
             "language": self.language,
+            "script": self.script,
             "speech_model": self.speech_model,
             "inject": self.inject,
             "rules": self.rules,
@@ -81,6 +87,22 @@ def _build(name: str, raw: dict[str, Any], base: dict[str, Any], matched_on: str
             value = base.get(key, fallback)
         return fallback if value in (None, "") else value
 
+    def script() -> str:
+        # Stated beats inherited, and a mode's own zh-Hans counts as stating
+        # one: that value meant both settings, so it still does wherever
+        # config.load has not yet written it out as two. An empty script
+        # stated by the mode is a choice too — leave the characters alone
+        # here, whatever default converts to. Default's own empty one is
+        # not: DEFAULTS puts it there whether or not anybody chose it.
+        for source in (raw, base):
+            stated = str(source.get("script", "") or "")
+            legacy = str(source.get("language", "") or "")
+            if stated or legacy in input_language.SCRIPTS:
+                return stated or legacy
+            if "script" in source:
+                return ""
+        return ""
+
     steps = [
         Step(
             llm=str(step.get("llm", "")),
@@ -93,7 +115,8 @@ def _build(name: str, raw: dict[str, Any], base: dict[str, Any], matched_on: str
     ]
     return Mode(
         name=name,
-        language=str(raw.get("language", base.get("language", "")) or ""),
+        language=input_language.split(str(raw.get("language", base.get("language", "")) or ""))[0],
+        script=script(),
         # Not inherited from default: a mode either names its own weights or
         # takes whatever is loaded. Inheriting would make every mode a switch.
         speech_model=str(raw.get("speech_model", "") or ""),

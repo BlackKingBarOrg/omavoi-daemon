@@ -1,9 +1,18 @@
-"""Input-language choices and optional Chinese script normalization.
+"""Input-language choices and the optional Chinese script preference.
 
 The Whisper language tokens come from openai/whisper's tokenizer.py.
 speech_languages.json contains their display names from Babel's CLDR data;
 names are bundled so displaying a menu needs no network or model load.
-Chinese script choices are application preferences, never Whisper tokens.
+
+Which language the recognizer listens for and which Chinese characters come
+out are two settings, not one. They used to share the picker: Simplified and
+Traditional Chinese were entries in the language list, so choosing one also
+pinned recognition to Chinese. Someone who speaks Chinese, English and Thai
+wants auto-detection *and* Simplified characters, and that combination had
+no way to be said — people wrote "only output Simplified Chinese" into the
+decoder prompt instead, which is a hint the model is free to ignore.
+
+The script preference is an application setting, never a Whisper token.
 """
 
 from __future__ import annotations
@@ -14,21 +23,12 @@ from functools import cache
 from importlib.resources import files
 
 SCRIPTS = {"zh-Hans": "t2s", "zh-Hant": "s2t"}
+# Written with Han characters that are not Chinese, so a Simplified or
+# Traditional preference must leave them alone. Codes for a mode's own
+# language, the names whisper reports for a detected one.
+_HAN_ELSEWHERE = frozenset({"ja", "japanese", "ko", "korean"})
 _AUTO = {"en": "Auto", "zh": "自动", "th": "อัตโนมัติ", "de": "Automatisch",
          "fr": "Automatique", "es": "Automático", "ja": "自動", "vi": "Tự động"}
-_SCRIPT_NAMES = {
-    "zh-Hans": {"en": "Simplified Chinese", "zh": "简体中文", "th": "ภาษาจีนตัวย่อ",
-                "de": "Chinesisch (vereinfacht)", "fr": "Chinois simplifié", "es": "Chino simplificado",
-                "ja": "簡体字中国語", "vi": "Tiếng Trung giản thể"},
-    "zh-Hant": {"en": "Traditional Chinese", "zh": "繁体中文", "th": "ภาษาจีนตัวเต็ม",
-                "de": "Chinesisch (traditionell)", "fr": "Chinois traditionnel", "es": "Chino tradicional",
-                "ja": "繁体字中国語", "vi": "Tiếng Trung phồn thể"},
-}
-_LEGACY_CHINESE = {
-    "en": "Chinese (no conversion)", "zh": "中文（不转换）", "th": "ภาษาจีน (ไม่แปลงตัวอักษร)",
-    "de": "Chinesisch (ohne Umwandlung)", "fr": "Chinois (sans conversion)",
-    "es": "Chino (sin conversión)", "ja": "中国語（字体変換なし）", "vi": "Tiếng Trung (không đổi dạng chữ)",
-}
 
 
 @cache
@@ -37,12 +37,45 @@ def catalogue() -> tuple[dict, ...]:
 
 
 def valid(value: str) -> bool:
+    """A recognition language. zh-Hans and zh-Hant are still accepted here,
+    because they were languages until the script became its own setting;
+    split() turns them into the pair they meant."""
     return value in ("", "auto", *SCRIPTS) or any(row["code"] == value for row in catalogue())
+
+
+def valid_script(value: str) -> bool:
+    """Empty leaves the characters as recognized."""
+    return value in ("", *SCRIPTS)
+
+
+def split(value: str) -> tuple[str, str]:
+    """A language value as (recognition language, script).
+
+    zh-Hans used to mean both "listen for Chinese" and "write Simplified",
+    so an old value comes apart into the two settings it stood for.
+    """
+    return ("zh", value) if value in SCRIPTS else (value, "")
 
 
 def recognition_language(value: str) -> str:
     """An explicit auto overrides a backend's global language default."""
     return "zh" if value in SCRIPTS else value or "auto"
+
+
+def applies(script: str, language: str, detected: str = "") -> bool:
+    """Whether a script preference should touch this take.
+
+    Any take that can carry Chinese characters: one recognized as Chinese,
+    and one on auto — a Chinese sentence with English in it is often
+    detected as English. Not Japanese or Korean, whose Han characters are
+    not Chinese ones to convert, whether the mode names that language or
+    auto detected it. `detected` is what the backend reported; an unknown
+    one does not block the preference.
+    """
+    if script not in SCRIPTS:
+        return False
+    spoken = language if language not in ("", "auto") else str(detected or "")
+    return spoken.strip().lower() not in _HAN_ELSEWHERE
 
 
 def options(model: str, locale: str = "en", current: str = "") -> list[dict[str, str]]:
@@ -56,20 +89,13 @@ def options(model: str, locale: str = "en", current: str = "") -> list[dict[str,
         code = row["code"]
         if (older and code == "yue") or (english_only and code != "en"):
             continue
-        choices = list(SCRIPTS) if code == "zh" else [code]
-        # Existing `zh` remains a real choice with its old no-conversion
-        # semantics. Opening the picker must never silently opt it into Hans.
-        if code == "zh" and current == "zh":
-            choices.append("zh")
-        for choice in choices:
-            names = _SCRIPT_NAMES.get(choice, row["names"])
-            label = _LEGACY_CHINESE[locale] if choice == "zh" else names[locale]
-            native = names["zh"] if choice in SCRIPTS else row["native"]
-            search = list(dict.fromkeys([native, names["en"], names["zh"], choice]))
-            rows.append({"value": choice, "label": label,
-                         "description": " · ".join(s for s in search if s != label)})
-    preferred = {code: i for i, code in enumerate(("auto", "zh-Hans", "zh-Hant", "en", "th"))}
-    rows.sort(key=lambda row: (preferred.get(row["value"], 5), row["label"].casefold()))
+        names = row["names"]
+        label = names[locale]
+        search = list(dict.fromkeys([row["native"], names["en"], names["zh"], code]))
+        rows.append({"value": code, "label": label,
+                     "description": " · ".join(s for s in search if s != label)})
+    preferred = {code: i for i, code in enumerate(("auto", "zh", "en", "th"))}
+    rows.sort(key=lambda row: (preferred.get(row["value"], 4), row["label"].casefold()))
     if current and current != "auto" and not any(row["value"] == current for row in rows):
         rows.append({"value": current, "label": current, "description": ""})
     return rows
@@ -95,8 +121,8 @@ _KANA = re.compile(r"[\u3040-\u30ff]")
 _CLAUSE = re.compile(r"[^\n。！？!?；;，,:：]+")
 
 
-def convert(text: str, language: str, protected: tuple[str, ...] = ()) -> str:
-    if language not in SCRIPTS or not text:
+def convert(text: str, script: str, protected: tuple[str, ...] = ()) -> str:
+    if script not in SCRIPTS or not text:
         return text
     spans = [(m.start(), m.end()) for m in _VERBATIM.finditer(text)]
     # Kana provides evidence that a clause is Japanese. Han-only proper names
@@ -105,7 +131,7 @@ def convert(text: str, language: str, protected: tuple[str, ...] = ()) -> str:
     for spelling in protected:
         if spelling:
             spans.extend((m.start(), m.end()) for m in re.finditer(re.escape(spelling), text))
-    converter = _converter(language)
+    converter = _converter(script)
     out: list[str] = []
     end = 0
     for start, stop in sorted(spans):

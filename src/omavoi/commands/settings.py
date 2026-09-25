@@ -50,6 +50,10 @@ def _legal_values(key: str, cfg: dict[str, Any]) -> tuple[tuple[str, ...], str]:
         return ("push_to_talk", "toggle"), "a hotkey behaviour"
     if key == "inject.method" or at("modes", "*", "inject"):
         return ("auto", "clipboard", "wtype", "xdotool"), "an injection route"
+    if at("modes", "*", "script"):
+        from ..input_language import SCRIPTS
+
+        return ("", *SCRIPTS), "a Chinese script"
     if at("modes", "*", "rules", "punctuation"):
         return ("keep", "strip"), "a punctuation policy"
     if key == "ui.hud_dwell":
@@ -174,8 +178,9 @@ def _why_not_that_language(key: str, value: str) -> str:
     was written happily — then the endpoint either 400s or quietly ignores it,
     on a take, minutes later, with nothing pointing back here.
 
-    Modes use the same catalogue as the language picker, including the two
-    application-level Chinese script preferences. The legacy global backend
+    Modes use the same catalogue as the language picker. zh-Hans and zh-Hant
+    are still accepted there, as the languages they used to be; the next load
+    writes them out as Chinese plus a script. The legacy global backend
     setting still accepts ISO-shaped codes for custom remote providers.
     """
     if key != "speech.language" and not (
@@ -187,7 +192,7 @@ def _why_not_that_language(key: str, value: str) -> str:
 
         if valid(value):
             return ""
-        return f"{value!r} is not a supported input language; use a Whisper code, zh-Hans, zh-Hant, or auto"
+        return f"{value!r} is not a supported input language; use a Whisper code or auto"
     if value in ("", "auto") or (2 <= len(value) <= 3 and value.isalpha() and value.islower()):
         return ""
     return (
