@@ -50,18 +50,18 @@ _HF_CPP = "ggerganov/whisper.cpp"
 CATALOG: tuple[ModelSpec, ...] = (
     # -- whisper.cpp / ggml (Vulkan, any GPU) --------------------------------
     ModelSpec("base", GGML, _CPP, _HF_CPP, "ggml-base.bin", 141,
-              "Proves the pipeline runs.", ("test",),
-              languages="en in practice"),
+              "Only for checking that everything works.", ("test",),
+              languages="English only, in practice"),
     ModelSpec("small", GGML, _CPP, _HF_CPP, "ggml-small.bin", 465,
               "Passable in English.",
-              languages="en and the other high-resource languages"),
+              languages="English and other widely spoken languages"),
     ModelSpec("medium", GGML, _CPP, _HF_CPP, "ggml-medium.bin", 1463,
-              "The floor of usable.",
-              languages="all 99, unevenly"),
+              "The smallest one that is really usable.",
+              languages="all 99 languages, some better than others"),
     ModelSpec("large-v3", GGML, _CPP, _HF_CPP, "ggml-large-v3.bin", 2952,
               "Twice the download, and it reports when it heard nothing.",
               ("accurate",),
-              languages="all 99, evenly"),
+              languages="all 99 languages, evenly"),
     # The default. Half the size of large-v3 and faster, at one measured
     # cost: a turbo model's no_speech_prob is 0 on every segment, so the
     # check that drops a silent take before anything else runs is dead and
@@ -73,14 +73,14 @@ CATALOG: tuple[ModelSpec, ...] = (
               "The default: half the size and faster. Cannot tell silence "
               "from speech, so a silent take may type a stock phrase.",
               ("recommended", "fast"),
-              languages="all 99, unevenly — it is a distillation"),
+              languages="all 99 languages, some better than others"),
     ModelSpec("large-v3-q5_0", GGML, _CPP, _HF_CPP, "ggml-large-v3-q5_0.bin", 1031,
-              "Quantised large-v3: a third of the VRAM, slightly less accurate.", ("quant",),
-              languages="all 99, evenly"),
+              "A compressed large-v3: a third of the graphics memory, slightly less accurate.", ("quant",),
+              languages="all 99 languages, evenly"),
     ModelSpec("large-v3-turbo-q5_0", GGML, _CPP, _HF_CPP,
               "ggml-large-v3-turbo-q5_0.bin", 547,
               "The lightest thing still worth using.", ("quant", "fast"),
-              languages="all 99, unevenly — it is a distillation"),
+              languages="all 99 languages, some better than others"),
 
     # -- LLM, run by the bundled llama-server ---------------------------------
     #
@@ -90,12 +90,12 @@ CATALOG: tuple[ModelSpec, ...] = (
               "Qwen3-4B-Q4_K_M.gguf", 2382,
               "The strongest Chinese at this size, and noticeably weaker "
               "outside Chinese and English.", ("fast",), kind=LLM,
-              languages="strong zh/en"),
+              languages="strongest in Chinese and English"),
     ModelSpec("qwen3-8b", GGML, _LLM, "Qwen/Qwen3-8B-GGUF",
               "Qwen3-8B-Q4_K_M.gguf", 4795,
               "The same strengths with more room. Pick it if you dictate in "
               "Chinese.", (), kind=LLM,
-              languages="strong zh/en"),
+              languages="strongest in Chinese and English"),
     # Recommended because it is the one that does not assume what language
     # you speak. The tag was on qwen3-8b, whose own note said it was "a good
     # default when the source language is Chinese" — a recommendation with a
@@ -105,12 +105,12 @@ CATALOG: tuple[ModelSpec, ...] = (
               "gemma-3-4b-it-Q4_K_M.gguf", 2374,
               "Even coverage across languages, and half the size of qwen3-8b. "
               "The default.", ("recommended", "fast"), kind=LLM,
-              languages="broad multilingual"),
+              languages="good in many languages"),
     ModelSpec("gemma-3-12b", GGML, _LLM, "ggml-org/gemma-3-12b-it-GGUF",
               "gemma-3-12b-it-Q4_K_M.gguf", 6962,
               "The best translation here, and the heaviest. Leaves little room "
               "beside a large speech model.", ("accurate",), kind=LLM,
-              languages="broad multilingual"),
+              languages="good in many languages"),
 )
 
 

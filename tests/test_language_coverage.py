@@ -56,7 +56,7 @@ def test_the_recommended_llm_does_not_assume_a_language():
     recommended = [entry for entry in models.CATALOG
                    if entry.kind == models.LLM and "recommended" in entry.tags]
     assert len(recommended) == 1, [e.key for e in recommended]
-    assert recommended[0].languages == "broad multilingual", recommended[0].note
+    assert recommended[0].languages == "good in many languages", recommended[0].note
 
 
 def test_the_shipped_local_llm_is_the_recommended_one():
