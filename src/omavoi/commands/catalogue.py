@@ -415,7 +415,7 @@ def cmd_model(args: argparse.Namespace) -> int:
         config.set_path("speech.backend", spec.backend)
         config.set_path("speech.model", spec.key if spec.fmt == models.GGML else spec.id)
         print(f"{GREEN}ok{RESET} using {key} via {spec.backend} "
-              f"{DIM}(restart the daemon to apply){RESET}")
+              f"{DIM}(a running daemon switches to it within a few seconds){RESET}")
         return 0
     return 1
 

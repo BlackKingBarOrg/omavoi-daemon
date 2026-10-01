@@ -15,7 +15,7 @@ from typing import Any
 from .. import config, i18n, input_language, ipc, models
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
-_MODE_FIELDS = ("language", "script", "speech_model", "prompt", "inject", "paste_key", "newline_key")
+_MODE_FIELDS = ("language", "script", "prompt", "inject", "paste_key", "newline_key")
 # The rules a mode carries, for `set <mode> rules.<key> <value>`.
 _RULE_FLAGS = ("hallucinations", "fillers", "dictionary", "names", "vocabulary", "cjk_spacing")
 _RULE_KEYS = (*_RULE_FLAGS, "punctuation", "joiner")
@@ -175,7 +175,7 @@ def cmd_mode(args: argparse.Namespace) -> int:
                 mode = modes_mod.resolve(cfg, None, forced=name)
                 raw = table.get(name, {})
                 language = mode.language or str(cfg["speech"].get("language", ""))
-                speech_model = mode.speech_model or str(cfg["speech"]["model"])
+                speech_model = str(cfg["speech"]["model"])
                 if cfg["speech"].get("backend") == "api":
                     from ..asr.api_whisper import ApiWhisperBackend
 
@@ -338,6 +338,13 @@ def cmd_mode(args: argparse.Namespace) -> int:
                 rules[key] = "keep" if low == "keep" else value
             table[name]["rules"] = rules
             return save(f"{name}.rules.{key} set")
+        # One voice model for every mode, chosen on the Models tab. A mode's
+        # own only ever swapped weights inside the engine already running.
+        if field == "speech_model":
+            print(f"{RED}the voice model is the same for every mode{RESET}", file=sys.stderr)
+            print(f"{DIM}choose it on the Models tab, or: omavoi model use <model>{RESET}",
+                  file=sys.stderr)
+            return 1
         if field not in _MODE_FIELDS:
             print(f"{RED}unknown field {field!r}; one of {', '.join(_MODE_FIELDS)} "
                   f"or rules.<{'|'.join(_RULE_KEYS)}>{RESET}",
@@ -356,33 +363,6 @@ def cmd_mode(args: argparse.Namespace) -> int:
         if field == "language" and value in input_language.SCRIPTS:
             table[name]["language"], table[name]["script"] = input_language.split(value)
             return save(f"{name}.language set to zh, {name}.script to {value}")
-        # Refused where it is written, not warned about on the next load: a
-        # mode whose speech_model does not exist keeps the previous weights and
-        # sounds exactly like a mode that works.
-        if field == "speech_model" and value.strip():
-            spec = models.spec(value.strip())
-            if spec is None or spec.kind != models.SPEECH:
-                known = ", ".join(m.key for m in models.CATALOG if m.kind == models.SPEECH)
-                print(f"{RED}{value} is not a speech model{RESET}", file=sys.stderr)
-                print(f"{DIM}one of: {known}{RESET}", file=sys.stderr)
-                return 1
-            if not models.is_downloaded(value.strip()):
-                print(f"{RED}{value} is not downloaded "
-                      f"({spec.size_mb / 1024:.1f} GB){RESET}", file=sys.stderr)
-                print(f"{DIM}omavoi model pull {value.strip()}{RESET}", file=sys.stderr)
-                return 1
-            # A mode changes the weights, never the engine: the running engine
-            # reads one format, and the swap would be refused at mode-switch
-            # time instead of here, which is the wrong place to find out.
-            running = str(cfg["speech"].get("backend", ""))
-            wants_ggml = running == "local-whispercpp"
-            if (spec.fmt == models.GGML) != wants_ggml:
-                print(f"{RED}{value} is a {spec.fmt} model and the engine in use "
-                      f"({running}) reads {'ggml' if wants_ggml else 'ct2'}{RESET}",
-                      file=sys.stderr)
-                print(f"{DIM}a mode can change the weights, not the engine"
-                      f"{RESET}", file=sys.stderr)
-                return 1
         table[name][field] = value
         return save(f"{name}.{field} set")
 

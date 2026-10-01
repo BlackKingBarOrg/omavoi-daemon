@@ -44,9 +44,6 @@ class Mode:
     # whatever language the recognizer listened for. Empty leaves them as
     # recognized.
     script: str = ""
-    # Empty means the global speech.model. A mode that names its own gets the
-    # weights swapped when it becomes the mode in use.
-    speech_model: str = ""
     prompt: str = ""
     inject: str = "auto"
     paste_key: str = ""
@@ -72,7 +69,6 @@ class Mode:
             "matched_on": self.matched_on,
             "language": self.language,
             "script": self.script,
-            "speech_model": self.speech_model,
             "inject": self.inject,
             "rules": self.rules,
             "steps": [s.as_dict() for s in self.steps],
@@ -117,9 +113,6 @@ def _build(name: str, raw: dict[str, Any], base: dict[str, Any], matched_on: str
         name=name,
         language=input_language.split(str(raw.get("language", base.get("language", "")) or ""))[0],
         script=script(),
-        # Not inherited from default: a mode either names its own weights or
-        # takes whatever is loaded. Inheriting would make every mode a switch.
-        speech_model=str(raw.get("speech_model", "") or ""),
         prompt=str(raw.get("prompt", base.get("prompt", "")) or ""),
         inject=str(pick("inject", "auto")),
         paste_key=str(raw.get("paste_key", base.get("paste_key", "")) or ""),

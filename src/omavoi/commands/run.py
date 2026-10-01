@@ -70,6 +70,10 @@ def cmd_reload(args: argparse.Namespace) -> int:
         print(f"{RED}{reply.get('error')}{RESET}", file=sys.stderr)
         return 1
     print(f"{GREEN}config reloaded{RESET}")
+    if reply.get("speech_error"):
+        print(f"{YELLOW}the voice model did not switch, and the previous one is still in use: "
+              f"{reply['speech_error']}{RESET}", file=sys.stderr)
+        return 1
     if reply.get("model_restart_required"):
         print(f"{YELLOW}model settings changed; restart the daemon{RESET}")
     return 0

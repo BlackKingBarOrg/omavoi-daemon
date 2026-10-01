@@ -178,15 +178,14 @@ def mode_list(monkeypatch, capsys) -> dict:
     ("local-llama-asr", "ggml:qwen3-asr-1.7b", 31),
     ("api", "ggml:large-v3-turbo", 100),
 ])
-def test_menu_payload_follows_the_mode_model_and_interface_locale(home, monkeypatch, capsys,
-                                                                  backend, model, count):
+def test_menu_payload_follows_the_voice_model_and_interface_locale(home, monkeypatch, capsys,
+                                                                   backend, model, count):
     cfg = config.defaults()
     cfg["ui"]["language"] = "zh"
     cfg["speech"]["backend"] = backend
     cfg["speech"]["model"] = model
     cfg["speech"]["api"]["model"] = "whisper-1"
     cfg["modes"]["default"]["language"] = "zh-Hant"
-    cfg["modes"]["prose"]["speech_model"] = "ggml:small"
     config.write(cfg)
     payload = mode_list(monkeypatch, capsys)
     assert payload["script_supported"] is True
@@ -194,7 +193,9 @@ def test_menu_payload_follows_the_mode_model_and_interface_locale(home, monkeypa
     assert (rows["default"]["language"], rows["default"]["script"]) == ("zh", "zh-Hant")
     assert rows["default"]["input_languages"][1]["label"] == "中文"
     assert len(rows["default"]["input_languages"]) == count
-    assert len(rows["prose"]["input_languages"]) == 100
+    # Every mode hears through the one voice model, so every mode's menu is
+    # that model's. A mode used to be able to name weights of its own.
+    assert len(rows["prose"]["input_languages"]) == count
 
 
 def test_payload_reports_the_prompt_the_decoder_is_given(home, monkeypatch, capsys):

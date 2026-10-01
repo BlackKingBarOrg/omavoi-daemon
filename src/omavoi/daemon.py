@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -74,6 +75,13 @@ class Daemon:
         self._ticker: threading.Thread | None = None
         self._watcher: threading.Thread | None = None
         self._config_stamp = self._stamp()
+        # The [speech] settings the running engine was built from, and the
+        # ones that last failed to load, so a model that will not start is
+        # tried once per change rather than on every reload after it.
+        self._speech_cfg = copy.deepcopy(cfg["speech"])
+        self._speech_failed: dict[str, Any] | None = None
+        self._speech_pending = False
+        self._speech_lock = threading.Lock()
 
     # -- state -------------------------------------------------------------
 
@@ -169,41 +177,72 @@ class Daemon:
         mode = modes.resolve(self.cfg, None, self.forced_mode)
         return {str(step.llm) for step in (mode.steps or []) if getattr(step, "llm", "")}
 
-    def _apply_mode_speech_model(self) -> None:
-        """Load the weights the mode in use names, if they differ.
+    def _apply_speech(self) -> str:
+        """Put in place the speech engine and weights the config names.
 
-        Done when the mode changes rather than when the take arrives: a swap
-        measured 3.7 s from spawn to a usable transcription for large-v3, and
-        that belongs to the switch, not to the sentence you are dictating. A
-        mode that names nothing leaves whatever is loaded alone.
+        One for every mode, chosen on the Models tab. Changing it used to wait
+        for a restart -- reload said so in the log and nowhere a person looks
+        -- and a mode could name weights of its own, which only ever swapped
+        inside the engine already running: a mode asking for Turbo while
+        Qwen3-ASR ran logged an error and went on with Qwen.
+
+        The new engine is loaded before the old one is closed, so weights that
+        will not load leave dictation on the ones before. Mid-take, it waits
+        for the take to end. Returns why it could not switch, or "".
         """
-        if self._state != IDLE:
-            # Mid-take. The next mode change or the end of this take gets it.
-            return
-        mode = modes.resolve(self.cfg, None, self.forced_mode)
-        want = str(getattr(mode, "speech_model", "") or "") or str(
-            self.cfg["speech"].get("model", "")
-        )
-        try:
-            loaded = str(self.backend.state().get("model", ""))
-        except Exception:
-            return
-        if not want or want == loaded:
-            return
-        use = getattr(self.backend, "use", None)
-        if not callable(use):
-            return
-        with self._lock:
-            self._set_state(BUSY)
-        try:
-            use(want)
-            log.info("mode %s: speech model is now %s", mode.name, want)
-        except Exception as exc:
-            # Keeping the old weights is better than a mode that cannot hear.
-            log.error("mode %s wanted speech model %s: %s", mode.name, want, exc)
-        finally:
+        with self._speech_lock:
+            want = copy.deepcopy(self.cfg["speech"])
+            if want == self._speech_cfg or want == self._speech_failed:
+                return ""
             with self._lock:
-                self._set_state(IDLE)
+                if self._state != IDLE:
+                    self._speech_pending = True
+                    return ""
+                self._speech_pending = False
+                self._set_state(BUSY)
+            # The name a person reads, for the overlay: not "ggml:".
+            self._stage("loading", str(want.get("model", "") or "").split(":")[-1])
+            old, new = self.backend, None
+            try:
+                new = asr.build(self.cfg)
+                # One engine's two servers cannot share a fixed port, so then
+                # the old one goes first, and comes back if the new will not.
+                shared_port = type(new) is type(old) and int(getattr(new, "port", 0) or 0) > 0
+                if shared_port:
+                    old.close()
+                try:
+                    new.load()
+                except Exception:
+                    if shared_port:
+                        old.load()
+                    raise
+            except Exception as exc:
+                if new is not None:
+                    try:
+                        new.close()
+                    except Exception:
+                        pass
+                self._speech_failed = want
+                model = str(want.get("model", "") or want.get("backend", ""))
+                log.error("could not switch the speech model to %s: %s", model, exc)
+                notify.send("Omavoi", f"{model} did not load, so dictation stays on the "
+                                      f"previous voice model: {exc}", urgency="normal")
+                return f"{model}: {exc}"
+            else:
+                self.backend = new
+                self.pipeline.backend = new
+                self._speech_cfg = want
+                self._speech_failed = None
+                if not shared_port:
+                    try:
+                        old.close()
+                    except Exception as exc:
+                        log.warning("closing the previous speech engine: %s", exc)
+                log.info("speech is now %s", new.describe())
+                return ""
+            finally:
+                with self._lock:
+                    self._set_state(IDLE)
 
     def _rebind_hotkey(self) -> None:
         """Put the listener on the key the config now names.
@@ -451,6 +490,9 @@ class Daemon:
             # A mode switch during the take skipped its sweep; this is the
             # first moment the servers are idle again.
             self._release_idle_llms()
+            # And a voice model chosen mid-take, which waited for it.
+            if self._speech_pending:
+                self._apply_speech()
 
     # -- server ------------------------------------------------------------
 
@@ -479,7 +521,6 @@ class Daemon:
                 return {"ok": False, "error": f"no such mode: {name}"}
             self.forced_mode = name
             self._release_idle_llms()
-            self._apply_mode_speech_model()
             return {"ok": True, "forced_mode": name}
         if cmd == "start":
             return self.begin()
@@ -499,15 +540,12 @@ class Daemon:
         return {"ok": False, "error": f"unknown command {cmd!r}"}
 
     def reload(self) -> dict[str, Any]:
-        """Re-read config. Anything but the model can change without a restart."""
+        """Re-read config and put it in place, the voice model included."""
         try:
             new = config.load()
         except SystemExit as exc:
             return {"ok": False, "error": str(exc)}
 
-        model_changed = (
-            new["speech"] != self.cfg["speech"]
-        )
         self.cfg = new
         self._config_stamp = self._stamp()
         # The registry is carried over, not rebuilt: it owns running llama
@@ -518,15 +556,18 @@ class Daemon:
         self.pipeline = Pipeline(new, self.backend, Injector(new), History(new),
                                  registry=llms, on_stage=self._stage)
         self._release_idle_llms()
-        self._apply_mode_speech_model()
+        speech_error = self._apply_speech()
         self._rebind_hotkey()
         # Subscribers were told the ui settings once, in the snapshot they got
         # when they connected. Without this a dwell change reaches the overlay
         # only after a shell restart, which looks exactly like the control not
         # working — which is what it did before it was wired up at all.
         self._broadcast({"event": "ui", "ui": self.status()["ui"]})
-        log.info("config reloaded%s", "; speech settings changed, restart the daemon" if model_changed else "")
-        return {"ok": True, "reloaded": True, "model_restart_required": model_changed, "vocabulary_schema": 2}
+        log.info("config reloaded")
+        # The voice model is switched here now, so a restart is only ever
+        # the answer when switching was tried and the new one would not load.
+        return {"ok": True, "reloaded": True, "model_restart_required": bool(speech_error),
+                "speech_error": speech_error, "vocabulary_schema": 2}
 
     def _serve(self) -> None:
         assert self._server is not None

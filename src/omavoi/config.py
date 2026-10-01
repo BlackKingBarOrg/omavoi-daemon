@@ -540,7 +540,7 @@ def load(path: Path | None = None) -> dict[str, Any]:
     # fold rewrites the steps that named them.
     folded = (migrate(merged) + retire_cuda_engine(merged)
               + normalise_hotkey(merged) + follow_ui_language(merged)
-              + split_chinese_script(merged))
+              + split_chinese_script(merged) + retire_mode_speech_model(merged))
     for note in folded:
         log.info("config: %s", note)
     if folded and path.exists():
@@ -553,14 +553,6 @@ def load(path: Path | None = None) -> dict[str, Any]:
     for problem in validate(merged):
         log.warning("config: %s", problem)
     return merged
-
-
-def _speech_spec(key: str) -> Any:
-    """The catalogue entry for a speech model key, or None."""
-    from . import models
-
-    spec = models.spec(key)
-    return spec if spec is not None and spec.kind == models.SPEECH else None
 
 
 # The three configurations an LLM step can name. Anything else in [llm.*] is
@@ -729,6 +721,24 @@ def split_chinese_script(cfg: dict[str, Any]) -> list[str]:
     return notes
 
 
+def retire_mode_speech_model(cfg: dict[str, Any]) -> list[str]:
+    """Take out a mode's own voice model: one serves every mode now.
+
+    It only ever swapped weights inside the engine already running, so a mode
+    asking for Turbo while Qwen3-ASR ran logged an error and went on with
+    Qwen, and inside one engine every switch of mode cost a reload of three
+    or four seconds. The voice model is speech.model, chosen on the Models
+    tab; what a mode says to it is its recognition hint.
+    """
+    notes: list[str] = []
+    for name, mode in (cfg.get("modes") or {}).items():
+        if isinstance(mode, dict) and "speech_model" in mode:
+            old = str(mode.pop("speech_model") or "")
+            notes.append(f"modes.{name}.speech_model {old!r} removed: every mode uses speech.model"
+                         if old else f"modes.{name}.speech_model removed")
+    return notes
+
+
 def migrate(cfg: dict[str, Any]) -> list[str]:
     """Fold stray [llm.*] entries into the three, in place.
 
@@ -829,14 +839,6 @@ def validate(cfg: dict[str, Any]) -> list[str]:
         script = str((mode or {}).get("script", "") or "")
         if not valid_script(script):
             problems.append(f"modes.{name}.script={script!r} must be zh-Hans, zh-Hant or empty")
-    for name, mode in modes.items():
-        want = str((mode or {}).get("speech_model", "") or "")
-        if not want:
-            continue
-        if _speech_spec(want) is None:
-            problems.append(
-                f"modes.{name}.speech_model={want!r} is not a speech model in the catalogue"
-            )
     if "default" not in modes:
         problems.append("no [modes.default]; there must be a fallback mode")
     for name, mode in modes.items():

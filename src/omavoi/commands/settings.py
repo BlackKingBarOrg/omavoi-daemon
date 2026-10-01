@@ -132,7 +132,7 @@ def _why_not_that_speech_model(key: str, value: str) -> str:
     hands to a shell.
 
     Not in _legal_values because membership and the message want different
-    lists. `omavoi model rm large-v3` and `mode set … speech_model large-v3`
+    lists. `omavoi model rm large-v3` and `model use large-v3`
     both accept the bare name — models.spec resolves one as ggml — so this
     accepts it too rather than being the one command that does not. The
     message lists only the catalogue's own spelling, which is what someone
