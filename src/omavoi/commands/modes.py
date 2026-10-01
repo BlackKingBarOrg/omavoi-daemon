@@ -51,6 +51,11 @@ def _mode_wants(cfg: dict[str, Any], mode: Any) -> list[dict[str, Any]]:
     return out
 
 
+def _prompt_edited(text: str) -> bool:
+    """Instructions somebody wrote, as against a shipped prompt or none."""
+    return bool((text or "").strip()) and not config.is_default_step_prompt(text)
+
+
 def _live_model_keys() -> set[str]:
     """What the daemon has resident right now, so it is not double-counted."""
     info = ipc.ping()
@@ -190,6 +195,13 @@ def cmd_mode(args: argparse.Namespace) -> int:
                     "prompt": mode.prompt,
                     "prompt_inherited": (name != "default" and "prompt" not in raw
                                          and mode.prompt != ""),
+                    # Whether each step's instructions are somebody's own. The
+                    # console's "no rewrite" removes a mode's one step, and
+                    # asks first only when that deletes something a person
+                    # wrote: a shipped prompt is what the next step it adds
+                    # will carry anyway.
+                    "steps": [step.as_dict() | {"prompt_edited": _prompt_edited(step.prompt)}
+                              for step in mode.steps],
                     "paste_key": str(raw.get("paste_key", "") or ""),
                     "active": name == active.name,
                     "fits": fit.get("fits", True),
