@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 import sys
 from typing import Any
 
-from .. import asr, config, i18n, ipc, models
+from .. import asr, config, i18n, ipc, models, paths
 from ..llm.agent_cli import puts_transcript_in_argv as agent_argv_exposed
 from ..term import BOLD, DIM, GREEN, RED, RESET, YELLOW
 
@@ -111,11 +112,50 @@ def _llm_live(engines: dict[str, Any], name: str) -> dict[str, Any]:
         if entry.get("name") == name:
             return {
                 "live_running": bool(entry.get("live")),
+                # A process of ours holding weights. `live` alone cannot say
+                # that: a coding agent is live whenever its command exists,
+                # though nothing runs until a take starts one, so the console
+                # showed it "running" beside the local model that really was.
+                "live_resident": bool(entry.get("live")) and int(entry.get("pid") or 0) > 0,
                 "live_url": str(entry.get("url", "")),
                 "live_problem": str(entry.get("problem", "")),
                 "live_engine": str(entry.get("engine", "")),
             }
-    return {"live_running": False, "live_url": "", "live_problem": "", "live_engine": ""}
+    return {"live_running": False, "live_resident": False, "live_url": "",
+            "live_problem": "", "live_engine": ""}
+
+
+def _recent_step_seconds(lines: int = 500, per_entry: int = 20) -> dict[str, tuple[float, int]]:
+    """How long each LLM entry's steps have taken here lately: (median, count).
+
+    The one thing a route's card could not say, and the one that decides
+    whether it belongs on every take: on one machine the local model's steps
+    had a median of 1.8 s and the coding agent's 8 to 11, because every agent
+    step starts the agent afresh. history.keep holds the file to 500 takes,
+    and all of them parse in about 4 ms; a route used last week still has a
+    speed to show.
+    """
+    try:
+        with paths.history_file().open(encoding="utf-8") as fh:
+            tail = fh.readlines()[-lines:]
+    except OSError:
+        return {}
+    seen: dict[str, list[float]] = {}
+    for line in reversed(tail):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        for step in (entry.get("steps") or []) if isinstance(entry, dict) else []:
+            name = str(step.get("llm") or "")
+            secs = step.get("seconds")
+            if (not name or step.get("error") or isinstance(secs, bool)
+                    or not isinstance(secs, (int, float)) or secs <= 0):
+                continue
+            bucket = seen.setdefault(name, [])
+            if len(bucket) < per_entry:
+                bucket.append(float(secs))
+    return {name: (round(statistics.median(v), 1), len(v)) for name, v in seen.items()}
 
 
 def cmd_model(args: argparse.Namespace) -> int:
@@ -198,6 +238,7 @@ def cmd_model(args: argparse.Namespace) -> int:
                 for step in mode.get("steps") or []:
                     used_by.setdefault(str(step.get("llm", "")), []).append(mode_name)
 
+            recent = _recent_step_seconds()
             llms = []
             for name, entry in sorted(cfg.get("llm", {}).items()):
                 backend = str(entry.get("backend", "openai"))
@@ -234,6 +275,8 @@ def cmd_model(args: argparse.Namespace) -> int:
                     # which one was in use.
                     "key_source": secrets.source_of(key_env, str(entry.get("key_name", "") or name)),
                     "used_by": sorted(used_by.get(name, [])),
+                    "recent_seconds": recent.get(name, (None, 0))[0],
+                    "recent_steps": recent.get(name, (None, 0))[1],
                     **_llm_live(engines, name),
                 })
 
@@ -277,6 +320,15 @@ def cmd_model(args: argparse.Namespace) -> int:
                               "root": str(models.model_root()),
                               "models": rows,
                               "llm": llms,
+                              # Which mode the next take uses, so a route can
+                              # say it is the one that runs. Several are in use
+                              # at once by design, one per mode's step, and
+                              # without this the console could only say which
+                              # modes use each — not which of them is speaking.
+                              # Empty while the mode follows the focused window.
+                              "current_mode": ("" if cfg.get("switching", {}).get("by_window")
+                                               else str(cfg.get("switching", {}).get("mode", "default"))),
+                              "following_window": bool(cfg.get("switching", {}).get("by_window")),
                               "engines": engines or None,
                               "daemon": bool(live),
                               "vram": _vram_split(engines)}, ensure_ascii=False, indent=2))
