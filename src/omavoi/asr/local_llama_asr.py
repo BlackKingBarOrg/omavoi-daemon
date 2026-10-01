@@ -51,11 +51,66 @@ _PREFIX = re.compile(r"\s*language\s+(\S+?)\s*<asr_text>", re.IGNORECASE)
 # The instruction llama-server gives the model, which is what it writes when
 # there is nothing to write. Compared folded: it has come back with a full
 # stop and might not always.
+INSTRUCTION = "Transcribe audio to text."
 _ECHO = "transcribeaudiototext"
+_CONTEXT = " Context: "
 
 
 def _fold(text: str) -> str:
     return re.sub(r"[\s\W_]+", "", unicodedata.normalize("NFKC", text).casefold())
+
+
+def instruction(context: str) -> str:
+    """What the model is told, with the recognition hint after it.
+
+    llama-server puts a request's `prompt` where its own instruction goes, so
+    a hint sent on its own would replace "transcribe this" with a list of
+    names. Kept, and followed by the hint, it is context and nothing more.
+
+    Not the system turn, where Qwen3-ASR's own toolkit puts context. Measured
+    on 2026-10-02 over twenty recorded takes: in the system turn the same
+    dictionary words changed four transcripts besides the names -- "UI"
+    came back as "U I", "Turbo V3" as "Turbo V 三". After the instruction,
+    seventeen came back identical and three differed by a comma; "Cloud
+    Code" became "Claude Code" and "Cloud海库" "Cloud Haiku" once those words
+    were in the dictionary, and nothing else moved; six silent or noise-only
+    clips all came back empty, one of which had echoed the bare instruction;
+    and the median take took 0.09 s longer. A mode's hint written as a
+    sentence, ahead of the names, brought one "U I" back in twenty.
+    """
+    context = flatten(context)
+    return INSTRUCTION + _CONTEXT + context if context else INSTRUCTION
+
+
+def flatten(context: str) -> str:
+    """The hint on one line, its lines kept apart.
+
+    The pipeline puts the mode's hint and the dictionary's names on lines of
+    their own. Run together with a space, the last name of one ran into the
+    first of the next, and the names after the join stopped helping: "Claude
+    Code" came back as "Cloud Code" with them after a newline, and right with
+    them after "; ".
+    """
+    lines = (" ".join(line.split()) for line in str(context or "").splitlines())
+    return "; ".join(line for line in lines if line)
+
+
+def _echoes(body: str, context: str) -> bool:
+    """Whether the reply is the hint read back rather than anything said.
+
+    A clip with nothing in it has come back as the bare instruction, so it
+    may come back as the hint too. Only the hint whole, or a list of three
+    or more of its words and nothing else: one word of it on its own is
+    what someone saying "Hyprland" dictated.
+    """
+    folded = _fold(body)
+    if not folded or not context:
+        return False
+    if folded in (_fold(context), _fold(instruction(context))) or body.lower().startswith("context:"):
+        return True
+    words = {_fold(w) for w in re.split(r"[,，、;\n]+", context) if _fold(w)}
+    said = [_fold(w) for w in re.split(r"[,，、;\n]+", body) if _fold(w)]
+    return len(said) >= 3 and all(w in words for w in said)
 
 
 def parse(text: str) -> tuple[str, str]:
@@ -233,10 +288,11 @@ class LlamaAsrBackend:
         data: dict[str, str] = {"model": self.model_key, "response_format": "json"}
         if lang and lang != "auto":
             data["language"] = lang
-        # `prompt` is not passed on. llama-server puts it in place of the
-        # instruction itself, "Transcribe audio to text", so the list of
-        # names a whisper prompt carries would become what the model is told
-        # to do. The dictionary's corrections still apply afterwards.
+        # The mode's recognition hint and the dictionary's names, after the
+        # instruction rather than in place of it. See instruction().
+        context = flatten(prompt or "")
+        if context:
+            data["prompt"] = instruction(context)
 
         body = encode_wav(samples, rate)
         seconds = len(samples) / float(rate or 16000)
@@ -265,6 +321,9 @@ class LlamaAsrBackend:
                                + secrets.scrub(response.text[:200]))
 
         text, detected = parse(response.json().get("text", ""))
+        if _echoes(text, context):
+            log.info("the speech model read back its recognition hint; nothing was said")
+            text = ""
         return Transcript(
             text=text,
             segments=[],

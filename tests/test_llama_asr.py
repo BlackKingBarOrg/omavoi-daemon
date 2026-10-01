@@ -193,13 +193,47 @@ def test_a_take_becomes_a_transcript_with_its_language():
     assert result.audio_seconds == pytest.approx(1.0)
 
 
-def test_the_names_prompt_is_not_sent_as_the_instruction():
+def test_the_recognition_hint_follows_the_instruction_and_never_replaces_it():
     """llama-server puts `prompt` where "Transcribe audio to text" goes."""
     backend, client = _running("language Chinese<asr_text>好的。")
     backend.transcribe(np.zeros(8000, dtype=np.float32), 16000,
-                       language="zh", prompt="Omavoi, Hyprland")
-    assert "prompt" not in client.sent["data"]
+                       language="zh", prompt="关于桌面的讨论。\nOmavoi, Hyprland")
+    assert client.sent["data"]["prompt"] == (
+        "Transcribe audio to text. Context: 关于桌面的讨论。; Omavoi, Hyprland")
     assert client.sent["data"]["language"] == "zh"
+
+
+@pytest.mark.parametrize("prompt", [None, "", "  \n "])
+def test_no_hint_sends_no_prompt(prompt):
+    backend, client = _running("language Chinese<asr_text>好的。")
+    backend.transcribe(np.zeros(8000, dtype=np.float32), 16000, prompt=prompt)
+    assert "prompt" not in client.sent["data"]
+
+
+@pytest.mark.parametrize("reply", [
+    "language None<asr_text>Omavoi, Hyprland, Wayland",
+    "language None<asr_text>Context: Omavoi, Hyprland, Wayland",
+    "language None<asr_text>Transcribe audio to text. Context: Omavoi, Hyprland, Wayland",
+    "language English<asr_text>Hyprland, Wayland, Omavoi",
+])
+def test_the_hint_read_back_is_not_a_take(reply):
+    backend, _ = _running(reply)
+    result = backend.transcribe(np.zeros(8000, dtype=np.float32), 16000,
+                                prompt="Omavoi, Hyprland, Wayland")
+    assert result.text == ""
+
+
+@pytest.mark.parametrize("reply,text", [
+    # One of its words is what someone saying it dictated.
+    ("language English<asr_text>Hyprland", "Hyprland"),
+    ("language English<asr_text>Omavoi, Hyprland", "Omavoi, Hyprland"),
+    ("language Chinese<asr_text>我在用 Hyprland 和 Wayland。", "我在用 Hyprland 和 Wayland。"),
+])
+def test_words_from_the_hint_said_aloud_are_kept(reply, text):
+    backend, _ = _running(reply)
+    result = backend.transcribe(np.zeros(8000, dtype=np.float32), 16000,
+                                prompt="Omavoi, Hyprland, Wayland")
+    assert result.text == text
 
 
 def test_auto_is_not_sent_as_a_language():
