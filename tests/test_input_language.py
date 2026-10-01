@@ -172,11 +172,18 @@ def mode_list(monkeypatch, capsys) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-@pytest.mark.parametrize("backend,count", [("local-whispercpp", 101), ("api", 100)])
-def test_menu_payload_follows_the_mode_model_and_interface_locale(home, monkeypatch, capsys, backend, count):
+@pytest.mark.parametrize("backend,model,count", [
+    ("local-whispercpp", "ggml:large-v3-turbo", 101),
+    # Qwen3-ASR's card lists 30 languages, and the menu offers those.
+    ("local-llama-asr", "ggml:qwen3-asr-1.7b", 31),
+    ("api", "ggml:large-v3-turbo", 100),
+])
+def test_menu_payload_follows_the_mode_model_and_interface_locale(home, monkeypatch, capsys,
+                                                                  backend, model, count):
     cfg = config.defaults()
     cfg["ui"]["language"] = "zh"
     cfg["speech"]["backend"] = backend
+    cfg["speech"]["model"] = model
     cfg["speech"]["api"]["model"] = "whisper-1"
     cfg["modes"]["default"]["language"] = "zh-Hant"
     cfg["modes"]["prose"]["speech_model"] = "ggml:small"

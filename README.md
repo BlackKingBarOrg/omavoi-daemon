@@ -15,8 +15,9 @@ the reference below.
                  hold RIGHTALT ─────────────────────────┐
                                                         ▼
   ring buffer ──▶ speech model ──▶ rules ──▶ LLM (opt) ──▶ your window
-   (pre-roll)      whisper.cpp     dictionary,  per mode      wtype or
-                   on Vulkan       names, …                   paste
+   (pre-roll)      Qwen3-ASR or    dictionary,  per mode      wtype or
+                   whisper, on     names, …                   paste
+                   Vulkan
 ```
 
 ## Why this is its own repository
@@ -55,8 +56,9 @@ If you would rather do it by hand, or you only want the daemon and no desktop
 pieces:
 
 ```bash
-# 1. the speech engine, the typing tools, and llama.cpp for modes with an LLM
-#    step (Vulkan runs on NVIDIA, AMD and Intel alike)
+# 1. the speech engines, the typing tools and llama.cpp, which runs both the
+#    default speech model and any local LLM step (Vulkan runs on NVIDIA, AMD
+#    and Intel alike)
 sudo pacman -S --needed whisper-cpp ggml ggml-vulkan llama-cpp \
                         pipewire wtype wl-clipboard xdotool
 
@@ -346,8 +348,14 @@ omavoi reload                 make the daemon re-read the config
 
 | | install size | notes |
 |---|---|---|
-| whisper.cpp on Vulkan | ~10 MB | NVIDIA, AMD, Intel, and CPU where there is no GPU |
+| Qwen3-ASR on llama.cpp (the default) | ~7 MB | NVIDIA, AMD, Intel; 30 languages, much stronger Chinese than whisper |
+| whisper.cpp on Vulkan | ~10 MB | NVIDIA, AMD, Intel, and CPU where there is no GPU; 99 languages |
 | any OpenAI-compatible API | — | audio leaves the machine |
+
+Which local engine runs is decided by the weights: `omavoi model use
+ggml:large-v3-turbo` moves to whisper.cpp, `omavoi model use
+ggml:qwen3-asr-1.7b` back to llama.cpp. Qwen3-ASR's figures, and what it does
+on silence, are in `src/omavoi/asr/local_llama_asr.py`.
 
 There used to be a second local engine, faster-whisper on CTranslate2, for
 about 2.2 GB of CUDA wheels and NVIDIA only. On the short push-to-talk takes

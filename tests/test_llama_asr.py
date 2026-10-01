@@ -211,3 +211,50 @@ def test_auto_is_not_sent_as_a_language():
 def test_module_name_matches_the_registry():
     assert local_llama_asr.NAME in asr.BACKENDS
     assert local_llama_asr.NAME in asr.LOCAL
+
+
+# -- the default ------------------------------------------------------------
+
+def _speech():
+    return [entry for entry in models.CATALOG if entry.kind == models.SPEECH]
+
+
+def test_qwen3_asr_is_what_a_fresh_install_runs(home):
+    """No config file at all: the daemon's own defaults decide."""
+    cfg = config.load()
+    assert cfg["speech"]["model"] == QWEN
+    assert asr.engine_for(cfg) == "local-llama-asr"
+    assert isinstance(asr.build(cfg), LlamaAsrBackend)
+
+
+def test_the_shipped_speech_model_is_the_one_recommended_and_listed_first():
+    """The console lists speech models in catalogue order and marks the
+    recommended one; the first run offers the default first. All three are
+    the same model or none of them means anything."""
+    recommended = [entry.key for entry in _speech() if "recommended" in entry.tags]
+    assert recommended == [config.DEFAULTS["speech"]["model"]]
+    assert _speech()[0].key == config.DEFAULTS["speech"]["model"]
+    assert models.spec(config.DEFAULTS["speech"]["model"]).backend == \
+        config.DEFAULTS["speech"]["backend"]
+
+
+def test_a_config_that_already_names_turbo_keeps_it(home):
+    """Changing the default reaches nobody who has chosen: every config the
+    CLI writes names its model."""
+    config.set_path("speech.model", "ggml:large-v3-turbo")
+    config.set_path("speech.backend", "local-whispercpp")
+    cfg = config.load()
+    assert cfg["speech"]["model"] == "ggml:large-v3-turbo"
+    assert asr.engine_for(cfg) == "local-whispercpp"
+
+
+def test_the_language_picker_offers_only_what_qwen3_asr_hears():
+    from omavoi import input_language
+
+    qwen = {row["value"] for row in input_language.options(QWEN)}
+    whisper = {row["value"] for row in input_language.options("ggml:large-v3-turbo")}
+    assert {"auto", "zh", "en", "th", "yue", "ja", "vi"} <= qwen
+    assert "sw" not in qwen and "sw" in whisper
+    assert len(qwen) == 31, "auto and the 30 languages on its card"
+    assert all(code in {r["code"] for r in input_language.catalogue()}
+               for code in models.spec(QWEN).language_codes), "spelled as the catalogue spells them"

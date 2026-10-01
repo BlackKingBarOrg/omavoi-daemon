@@ -37,6 +37,10 @@ class ModelSpec:
     # found and removed with it. Qwen3-ASR's audio encoder is a second GGUF,
     # and weights without it are not "downloaded" in any sense that matters.
     extra_files: tuple[str, ...] = ()
+    # The recognition languages it takes, as speech_languages.json spells
+    # them, when that is not every one whisper has a token for. The console's
+    # language picker offers these and no others.
+    language_codes: tuple[str, ...] = ()
 
     @property
     def files(self) -> tuple[str, ...]:
@@ -59,6 +63,33 @@ _LLM = "llama-local"
 _HF_CPP = "ggerganov/whisper.cpp"
 
 CATALOG: tuple[ModelSpec, ...] = (
+    # -- Qwen3-ASR, run by llama-server (Vulkan, any GPU) ---------------------
+    #
+    # The default, and first so the console lists it first. Not whisper, so
+    # not whisper.cpp: asr/local_llama_asr.py starts its own llama-server for
+    # it. Measured on 2026-10-01 on an Intel Arc B390 over twenty recorded
+    # takes: 0.80 s a take against large-v3-turbo's 3.38 s, with the two
+    # transcripts 2.9% apart. The accuracy claim in the note is the published
+    # one — AISHELL-1 CER 1.48 against whisper-large-v3's 5.14, Open ASR
+    # Leaderboard English WER 4.31 against turbo's 6.36 — and not a
+    # measurement of ours, which had no reference transcripts to score.
+    #
+    # What it costs against turbo: about 0.8 GB more download, llama-cpp,
+    # which the first-run screen installs anyway, and 30 languages where
+    # whisper has 99. Its card lists them; Filipino is `tl` here, the code
+    # whisper's tokenizer gave it.
+    ModelSpec("qwen3-asr-1.7b", GGML, _ASR, "ggml-org/Qwen3-ASR-1.7B-GGUF",
+              "Qwen3-ASR-1.7B-Q8_0.gguf", 2404,
+              "The default. Much more accurate than whisper in Chinese, a little "
+              "better in English, and faster. Runs on llama.cpp.",
+              ("recommended", "accurate", "fast"),
+              languages="30 languages and 22 Chinese dialects",
+              extra_files=("mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",),
+              language_codes=("zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id",
+                              "it", "ko", "ru", "th", "vi", "ja", "tr", "hi", "ms",
+                              "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa", "el",
+                              "hu", "mk", "ro")),
+
     # -- whisper.cpp / ggml (Vulkan, any GPU) --------------------------------
     ModelSpec("base", GGML, _CPP, _HF_CPP, "ggml-base.bin", 141,
               "Only for checking that everything works.", ("test",),
@@ -73,17 +104,18 @@ CATALOG: tuple[ModelSpec, ...] = (
               "Twice the download, and it reports when it heard nothing.",
               ("accurate",),
               languages="all 99 languages, evenly"),
-    # The default. Half the size of large-v3 and faster, at one measured
-    # cost: a turbo model's no_speech_prob is 0 on every segment, so the
-    # check that drops a silent take before anything else runs is dead and
-    # the phrase list is the only guard left. Over 291 takes on this
-    # machine that let two stock hallucinations through — "谢谢大家!" and a
-    # subtitle credit — both on recordings below -58 dBFS, where the
-    # quietest take that carried real speech was -51.
+    # The default until qwen3-asr-1.7b, and the whisper to pick for a
+    # language Qwen3-ASR does not have. Half the size of large-v3 and faster,
+    # at one measured cost: a turbo model's no_speech_prob is 0 on every
+    # segment, so the silence filter, which needs that evidence, never drops
+    # anything for it. Over 291 takes on one machine it typed two stock
+    # hallucinations — "谢谢大家!" and a subtitle credit — both on
+    # recordings below -58 dBFS, where the quietest take that carried real
+    # speech was -51.
     ModelSpec("large-v3-turbo", GGML, _CPP, _HF_CPP, "ggml-large-v3-turbo.bin", 1549,
-              "The default: half the size and faster. Cannot tell silence "
+              "Half the size of large-v3 and faster. Cannot tell silence "
               "from speech, so a silent take may type a stock phrase.",
-              ("recommended", "fast"),
+              ("fast",),
               languages="all 99 languages, some better than others"),
     ModelSpec("large-v3-q5_0", GGML, _CPP, _HF_CPP, "ggml-large-v3-q5_0.bin", 1031,
               "A compressed large-v3: a third of the graphics memory, slightly less accurate.", ("quant",),
@@ -92,22 +124,6 @@ CATALOG: tuple[ModelSpec, ...] = (
               "ggml-large-v3-turbo-q5_0.bin", 547,
               "The lightest thing still worth using.", ("quant", "fast"),
               languages="all 99 languages, some better than others"),
-
-    # -- Qwen3-ASR, run by llama-server (Vulkan, any GPU) ---------------------
-    #
-    # Not whisper, so not whisper.cpp: asr/local_llama_asr.py starts its own
-    # llama-server for it. Measured on 2026-10-01 on an Intel Arc B390 over
-    # twenty recorded takes: 0.80 s a take against large-v3-turbo's 3.38 s,
-    # with the two transcripts 2.9% apart. The accuracy claim in the note is
-    # the published one — AISHELL-1 CER 1.48 against whisper-large-v3's 5.14,
-    # Open ASR Leaderboard English WER 4.31 against turbo's 6.36 — and not a
-    # measurement of ours, which had no reference transcripts to score.
-    ModelSpec("qwen3-asr-1.7b", GGML, _ASR, "ggml-org/Qwen3-ASR-1.7B-GGUF",
-              "Qwen3-ASR-1.7B-Q8_0.gguf", 2404,
-              "Much more accurate than whisper in Chinese, a little better in "
-              "English, and faster. Runs on llama.cpp.", ("accurate", "fast"),
-              languages="30 languages and 22 Chinese dialects",
-              extra_files=("mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",)),
 
     # -- LLM, run by the bundled llama-server ---------------------------------
     #

@@ -284,8 +284,8 @@ def cmd_model(args: argparse.Namespace) -> int:
         text_lang = i18n.ui_lang(cfg)
         print(f"{BOLD}  {'model':<24}{'size':>7}  {'state':<10}notes{RESET}")
         groups = [
-            ("local-whispercpp", models.SPEECH, "speech · local-whispercpp (Vulkan)"),
             ("local-llama-asr", models.SPEECH, "speech · local-llama-asr, llama.cpp (Vulkan)"),
+            ("local-whispercpp", models.SPEECH, "speech · local-whispercpp (Vulkan)"),
             ("", models.LLM, "llm · llama-local, started by the daemon"),
         ]
         for backend, kind, engine in groups:

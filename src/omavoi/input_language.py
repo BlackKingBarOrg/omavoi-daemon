@@ -79,15 +79,24 @@ def applies(script: str, language: str, detected: str = "") -> bool:
 
 
 def options(model: str, locale: str = "en", current: str = "") -> list[dict[str, str]]:
+    from . import models
+
     locale = locale if locale in _AUTO else "en"
     rows = [{"value": "auto", "label": _AUTO[locale], "description": ""}]
     # Cantonese has a separate token starting with large-v3. Every model in
     # our local catalogue is multilingual; older weights have 99 tokens.
     older = model.removeprefix("ggml:") in {"base", "small", "medium", "large-v1", "large-v2", "whisper-1"}
     english_only = model.removesuffix(".bin").endswith(".en")
+    # A model that is not whisper takes the languages its catalogue entry
+    # lists: Qwen3-ASR has 30 of these hundred, and offering the rest would
+    # name a language it was never trained to hear.
+    spec = models.spec(model) if model else None
+    only = set(spec.language_codes) if spec is not None and spec.language_codes else None
     for row in catalogue():
         code = row["code"]
         if (older and code == "yue") or (english_only and code != "en"):
+            continue
+        if only is not None and code not in only:
             continue
         names = row["names"]
         label = names[locale]

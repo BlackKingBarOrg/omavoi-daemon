@@ -64,7 +64,9 @@ def test_the_engines_settings_block_is_dropped(home):
     ("medium", "ggml:medium"),
     ("large-v3", "ggml:large-v3"),
     ("large-v3-turbo", "ggml:large-v3-turbo"),
-    # large-v2 has no ggml build, so it falls through to the shipped default.
+    # large-v2 has no ggml build. Its nearest is turbo, on the whisper.cpp
+    # engine this moves the config to, and not the shipped default, which is
+    # Qwen3-ASR on llama.cpp.
     ("large-v2", "ggml:large-v3-turbo"),
     # These two have no equivalent, and falling through to the 3 GB default
     # would hand someone who chose 75 MB a download they did not ask for.

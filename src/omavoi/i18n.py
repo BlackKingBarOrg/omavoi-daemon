@@ -147,21 +147,21 @@ _TABLE: dict[str, dict[str, str]] = {
         _JA: "ダウンロードは倍ですが、何も聞こえなかったことを報告してくれます。",
         _VI: "Tải về gấp đôi, bù lại nó báo khi không nghe thấy gì.",
     },
-    ("The default: half the size and faster. Cannot tell silence from speech, "
+    ("Half the size of large-v3 and faster. Cannot tell silence from speech, "
      "so a silent take may type a stock phrase."): {
-        _ZH: "默认：体积减半，速度更快。分不清静音和说话，所以一次静音的录音可能会打出一句套话。",
-        _TH: ("ค่าเริ่มต้น: เล็กลงครึ่งหนึ่งและเร็วกว่า แต่แยกความเงียบจากเสียงพูดไม่ได้ "
+        _ZH: "体积只有 large-v3 的一半，速度更快。分不清静音和说话，所以一次静音的录音可能会打出一句套话。",
+        _TH: ("เล็กเพียงครึ่งของ large-v3 และเร็วกว่า แต่แยกความเงียบจากเสียงพูดไม่ได้ "
               "การอัดที่เงียบจึงอาจพิมพ์วลีสำเร็จรูปออกมา"),
-        _DE: ("Die Vorgabe: halb so groß und schneller. Kann Stille nicht von Sprache unterscheiden, eine stille "
+        _DE: ("Halb so groß wie large-v3 und schneller. Kann Stille nicht von Sprache unterscheiden, eine stille "
               "Aufnahme tippt also womöglich einen Standardsatz."),
-        _FR: ("Le choix par défaut : moitié moins gros et plus rapide. Il ne "
+        _FR: ("Moitié moins gros que large-v3 et plus rapide. Il ne "
               "distingue pas le silence de la parole, une prise muette peut donc "
               "écrire une phrase toute faite."),
-        _ES: ("El valor por defecto: la mitad de tamaño y más rápido. No distingue el silencio del habla, así que una "
+        _ES: ("La mitad de tamaño que large-v3 y más rápido. No distingue el silencio del habla, así que una "
               "toma muda puede escribir una frase hecha."),
-        _JA: ("既定値：サイズは半分で、より高速。無音と発話を区別できないため、"
+        _JA: ("サイズは large-v3 の半分で、より高速。無音と発話を区別できないため、"
               "無音の録音が決まり文句を打ち込むことがあります。"),
-        _VI: ("Mặc định: nhỏ bằng một nửa và nhanh hơn. Không phân biệt được im lặng với lời nói, nên một lần thu im "
+        _VI: ("Nhỏ bằng một nửa large-v3 và nhanh hơn. Không phân biệt được im lặng với lời nói, nên một lần thu im "
               "lặng có thể gõ ra một câu rập khuôn."),
     },
     # The prompt a new LLM step starts with. Translated like everything else
@@ -288,21 +288,21 @@ _TABLE: dict[str, dict[str, str]] = {
         _JA: "どの言語でも言い回しを丁寧に保ち、翻訳も得意です。動作中は約 6 GB を使います。",
         _VI: "Giữ lời lẽ cẩn thận ở mọi ngôn ngữ và dịch tốt. Chiếm khoảng 6 GB khi chạy.",
     },
-    "Much more accurate than whisper in Chinese, a little better in English, and "
-    "faster. Runs on llama.cpp.": {
-        _ZH: "中文比 whisper 准得多，英文也略好，而且更快。用 llama.cpp 运行。",
-        _TH: "แม่นกว่า whisper มากในภาษาจีน ภาษาอังกฤษก็ดีกว่าเล็กน้อย และเร็วกว่า "
-             "ทำงานบน llama.cpp",
-        _DE: "Im Chinesischen viel genauer als whisper, im Englischen etwas besser, und "
-             "schneller. Läuft auf llama.cpp.",
-        _FR: "Bien plus précis que whisper en chinois, un peu meilleur en anglais, et "
-             "plus rapide. Tourne sur llama.cpp.",
-        _ES: "Mucho más preciso que whisper en chino, algo mejor en inglés y más "
-             "rápido. Funciona con llama.cpp.",
-        _JA: "中国語では whisper よりはるかに正確で、英語も少し良く、しかも速い。"
-             "llama.cpp で動きます。",
-        _VI: "Chính xác hơn whisper nhiều ở tiếng Trung, tốt hơn một chút ở tiếng Anh, "
-             "và nhanh hơn. Chạy trên llama.cpp.",
+    "The default. Much more accurate than whisper in Chinese, a little better in "
+    "English, and faster. Runs on llama.cpp.": {
+        _ZH: "默认选择。中文比 whisper 准得多，英文也略好，而且更快。用 llama.cpp 运行。",
+        _TH: "ค่าเริ่มต้น แม่นกว่า whisper มากในภาษาจีน ภาษาอังกฤษก็ดีกว่าเล็กน้อย "
+             "และเร็วกว่า ทำงานบน llama.cpp",
+        _DE: "Die Vorgabe. Im Chinesischen viel genauer als whisper, im Englischen etwas "
+             "besser, und schneller. Läuft auf llama.cpp.",
+        _FR: "Le choix par défaut. Bien plus précis que whisper en chinois, un peu "
+             "meilleur en anglais, et plus rapide. Tourne sur llama.cpp.",
+        _ES: "El valor por defecto. Mucho más preciso que whisper en chino, algo mejor "
+             "en inglés y más rápido. Funciona con llama.cpp.",
+        _JA: "既定値です。中国語では whisper よりはるかに正確で、英語も少し良く、"
+             "しかも速い。llama.cpp で動きます。",
+        _VI: "Mặc định. Chính xác hơn whisper nhiều ở tiếng Trung, tốt hơn một chút ở "
+             "tiếng Anh, và nhanh hơn. Chạy trên llama.cpp.",
     },
     "30 languages and 22 Chinese dialects": {
         _ZH: "30 种语言和 22 种汉语方言",

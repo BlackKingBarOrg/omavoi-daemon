@@ -117,7 +117,13 @@ DEFAULTS: dict[str, Any] = {
     },
     "speech": {
         # Exactly one speech engine is active at a time.
-        # local-whispercpp | api
+        # local-llama-asr | local-whispercpp | api
+        #
+        # Qwen3-ASR on llama.cpp by default: on Vulkan, like whisper.cpp, and
+        # out of llama-cpp, which the first-run screen installs for the local
+        # LLM anyway. models.py has the measurement and the published figures
+        # behind the choice. whisper.cpp stays for the 69 languages Qwen3-ASR
+        # does not have, and for a machine without llama.cpp.
         #
         # whisper.cpp on Vulkan runs on NVIDIA, AMD and Intel alike, and on
         # CPU where there is no GPU, out of ~8 MB of packages. There used to
@@ -128,11 +134,11 @@ DEFAULTS: dict[str, Any] = {
         # second engine, a second model format, a second set of runtime
         # library problems and a 2.2 GB install, for nothing anyone could
         # feel.
-        "backend": "local-whispercpp",
-        # large-v3-turbo: half the download of large-v3 and faster, for one
-        # measured cost that models.py spells out — its no_speech_prob is
-        # always 0, so the silence check never fires.
-        "model": "ggml:large-v3-turbo",
+        "backend": "local-llama-asr",
+        # Every config written since the first-run screen ran `model use`
+        # names its model, so this reaches new installs and a hand-written
+        # config that leaves it out — not anyone who has chosen.
+        "model": "ggml:qwen3-asr-1.7b",
         "language": "",
         "local_whispercpp": {
             "binary": "",
@@ -610,7 +616,11 @@ def retire_cuda_engine(cfg: dict[str, Any]) -> list[str]:
         # Six of the eight ct2 names exist verbatim in the ggml catalogue.
         # These two do not, and falling through to the shipped default would
         # hand someone who had deliberately chosen 75 MB a 3 GB download.
-        nearest = {"tiny": "base", "distil-large-v3": "large-v3-turbo"}
+        # large-v2 used to reach turbo by falling through to the shipped
+        # default. The default is Qwen3-ASR now, on another engine than the
+        # whisper.cpp this moves the config to, so it is named outright.
+        nearest = {"tiny": "base", "distil-large-v3": "large-v3-turbo",
+                   "large-v2": "large-v3-turbo"}
         moved = f"{models.GGML}:{nearest.get(want, want)}"
         if models.spec(moved) is not None:
             speech["model"] = moved
