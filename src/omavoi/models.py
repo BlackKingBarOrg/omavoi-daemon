@@ -111,6 +111,21 @@ CATALOG: tuple[ModelSpec, ...] = (
               "The best translation here, and the heaviest. Leaves little room "
               "beside a large speech model.", ("accurate",), kind=LLM,
               languages="good in many languages"),
+    # Google's own QAT file, which unlike Gemma 3's is not gated, so it
+    # downloads without a login. Tried on 2026-10-01 against qwen3-4b,
+    # qwen3-8b and gemma-3-4b (not gemma-3-12b) on 24 Chinese, code-switched
+    # and English dictations through the shipped prompt. With the transcript
+    # fenced off it kept the meaning of every one and still removed most of
+    # the filler — qwen3-8b removed a little more but typed the fence into
+    # three, and qwen3-4b kept every meaning by editing almost nothing — and
+    # it translated Chinese into Thai best.
+    # About 6 GB resident, so beside large-v3-turbo it wants more than an
+    # 8 GB card has to give — which is why it is not the default.
+    ModelSpec("gemma-4-e4b", GGML, _LLM, "google/gemma-4-E4B-it-qat-q4_0-gguf",
+              "gemma-4-E4B_q4_0-it.gguf", 4916,
+              "Careful with wording in every language, and translates well. Uses "
+              "about 6 GB while it runs.", ("accurate",), kind=LLM,
+              languages="good in many languages"),
 )
 
 

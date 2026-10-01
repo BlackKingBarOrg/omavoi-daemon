@@ -13,19 +13,21 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess
 import time
 from typing import Any
 
-from .. import gpu, models, secrets
+from .. import config, gpu, i18n, models, secrets
 from ..childlog import ChildLog
 from .base import LlmResult
 
 log = logging.getLogger(__name__)
 
 _BINARIES = ("llama-server", "llama.cpp-server", "llamacpp-server")
+_FENCE = re.compile(r"</?transcript>")
 
 
 def find_server() -> str | None:
@@ -215,10 +217,7 @@ class LlamaLocalBackend:
             return LlmResult("", self.model_key, self.backend,
                              time.monotonic() - started, error=problem)
 
-        messages = []
-        if system.strip():
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": text})
+        messages, fenced = _messages(system, text)
 
         try:
             response = self._client.post(
@@ -247,6 +246,8 @@ class LlamaLocalBackend:
             # window was in front. A non-string content is no content.
             raw = (payload.get("choices") or [{}])[0].get("message", {}).get("content")
             content = raw.strip() if isinstance(raw, str) else ""
+            if fenced:
+                content = _unfence(content)
             if not content:
                 finish = (payload.get("choices") or [{}])[0].get("finish_reason", "")
                 why = ("the model used its whole token budget without answering"
@@ -258,6 +259,35 @@ class LlamaLocalBackend:
         except Exception as exc:
             return LlmResult("", self.model_key, self.backend, time.monotonic() - started,
                              error=f"{type(exc).__name__}: {exc}")
+
+
+def _messages(system: str, text: str) -> tuple[list[dict[str, str]], bool]:
+    """The chat one step sends, and whether the transcript went in fenced.
+
+    Only the shipped prompt is fenced: its wording is known, the note that
+    goes with it is translated beside it (i18n.TRANSCRIPT_NOTE), and it is
+    what a fresh install runs. A prompt somebody wrote — a translation step,
+    say — goes out exactly as written, because the note's "edit them like any
+    other sentence" would contradict it.
+    """
+    lang = config.default_step_prompt_language(system)
+    if lang is not None:
+        note = i18n.t(i18n.TRANSCRIPT_NOTE, lang)
+        return [{"role": "system", "content": system.rstrip() + "\n" + note},
+                {"role": "user", "content": f"<transcript>{text}</transcript>"}], True
+    messages = []
+    if system.strip():
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": text})
+    return messages, False
+
+
+def _unfence(content: str) -> str:
+    """The reply without the fence, which a model may hand back around it.
+
+    qwen3-8b did, on three of 24 dictations, and whatever comes back is typed.
+    """
+    return _FENCE.sub("", content).strip()
 
 
 def _explain(output: bytes) -> str:

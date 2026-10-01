@@ -110,7 +110,7 @@ def test_no_translation_describes_a_model_that_is_gone():
     """The eight ct2 notes were translated into seven languages each."""
     live = ({entry.note for entry in models.CATALOG}
             | {entry.languages for entry in models.CATALOG}
-            | {config.DEFAULT_STEP_PROMPT})
+            | {config.DEFAULT_STEP_PROMPT, i18n.TRANSCRIPT_NOTE})
     orphans = [key for key in i18n._TABLE if key not in live]
     assert not orphans, orphans
 
@@ -128,6 +128,7 @@ def test_every_note_has_a_translation():
                if entry.note and entry.note not in i18n._TABLE]
     assert not missing, f"no translation for the notes of: {missing}"
     assert config.DEFAULT_STEP_PROMPT in i18n._TABLE
+    assert i18n.TRANSCRIPT_NOTE in i18n._TABLE
 
 
 def test_every_translation_covers_every_language():

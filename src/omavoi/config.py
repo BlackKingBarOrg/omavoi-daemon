@@ -72,9 +72,20 @@ def is_default_step_prompt(text: str) -> bool:
     changes: one nobody has touched follows the language, one somebody has
     edited is theirs and is never rewritten.
     """
+    return default_step_prompt_language(text) is not None
+
+
+def default_step_prompt_language(text: str) -> str | None:
+    """Which language's shipped prompt this is, or None for one somebody wrote.
+
+    The local backend needs the answer and not just the yes: the note it adds
+    to a shipped prompt is in that prompt's language.
+    """
     stripped = (text or "").strip()
-    return any(stripped == default_step_prompt(lang).strip()
-               for lang in ("", *i18n.LANGUAGES))
+    for lang in i18n.LANGUAGES:
+        if stripped == default_step_prompt(lang).strip():
+            return lang
+    return None
 
 DEFAULTS: dict[str, Any] = {
     "audio": {
