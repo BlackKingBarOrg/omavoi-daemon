@@ -238,6 +238,13 @@ def test_the_shipped_speech_model_is_the_one_recommended_and_listed_first():
         config.DEFAULTS["speech"]["backend"]
 
 
+def test_no_note_calls_its_model_the_default():
+    """The console says "default" of the model your configuration names. A
+    note that said it of the shipped one put two defaults on one screen the
+    moment you chose another; the "recommended" tag is what marks it."""
+    assert [entry.key for entry in models.CATALOG if "default" in entry.note.lower()] == []
+
+
 def test_a_config_that_already_names_turbo_keeps_it(home):
     """Changing the default reaches nobody who has chosen: every config the
     CLI writes names its model."""

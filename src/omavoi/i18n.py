@@ -129,14 +129,14 @@ _TABLE: dict[str, dict[str, str]] = {
         _JA: "このサイズでは中国語が最も強く、中国語と英語以外では明らかに弱くなります。",
         _VI: "Tiếng Trung mạnh nhất ở cỡ này, và yếu đi rõ rệt ngoài tiếng Trung và tiếng Anh.",
     },
-    "Even coverage across languages, and half the size of qwen3-8b. The default.": {
-        _ZH: "各语言表现均衡，体积只有 qwen3-8b 的一半。默认选择。",
-        _TH: "ทำได้สม่ำเสมอทุกภาษา และเล็กเพียงครึ่งของ qwen3-8b ค่าเริ่มต้น",
-        _DE: "Gleichmäßig über Sprachen hinweg, und halb so groß wie qwen3-8b. Die Vorgabe.",
-        _FR: "Une couverture égale entre les langues, pour moitié moins gros que qwen3-8b. Le choix par défaut.",
-        _ES: "Cobertura uniforme entre idiomas, y la mitad de tamaño que qwen3-8b. El valor por defecto.",
-        _JA: "言語をまたいで均等で、qwen3-8b の半分のサイズ。既定値です。",
-        _VI: "Đồng đều giữa các ngôn ngữ, và nhỏ bằng nửa qwen3-8b. Mặc định.",
+    "Even coverage across languages, and half the size of qwen3-8b.": {
+        _ZH: "各语言表现均衡，体积只有 qwen3-8b 的一半。",
+        _TH: "ทำได้สม่ำเสมอทุกภาษา และเล็กเพียงครึ่งของ qwen3-8b",
+        _DE: "Gleichmäßig über Sprachen hinweg, und halb so groß wie qwen3-8b.",
+        _FR: "Une couverture égale entre les langues, pour moitié moins gros que qwen3-8b.",
+        _ES: "Cobertura uniforme entre idiomas, y la mitad de tamaño que qwen3-8b.",
+        _JA: "言語をまたいで均等で、qwen3-8b の半分のサイズ。",
+        _VI: "Đồng đều giữa các ngôn ngữ, và nhỏ bằng nửa qwen3-8b.",
     },
     "Twice the download, and it reports when it heard nothing.": {
         _ZH: "下载量是两倍，但它会报告自己什么都没听到。",
@@ -288,20 +288,20 @@ _TABLE: dict[str, dict[str, str]] = {
         _JA: "どの言語でも言い回しを丁寧に保ち、翻訳も得意です。動作中は約 6 GB を使います。",
         _VI: "Giữ lời lẽ cẩn thận ở mọi ngôn ngữ và dịch tốt. Chiếm khoảng 6 GB khi chạy.",
     },
-    "The default. Much more accurate than whisper in Chinese, a little better in "
-    "English, and faster. Runs on llama.cpp.": {
-        _ZH: "默认选择。中文比 whisper 准得多，英文也略好，而且更快。用 llama.cpp 运行。",
-        _TH: "ค่าเริ่มต้น แม่นกว่า whisper มากในภาษาจีน ภาษาอังกฤษก็ดีกว่าเล็กน้อย "
+    "Much more accurate than whisper in Chinese, a little better in English, and "
+    "faster. Runs on llama.cpp.": {
+        _ZH: "中文比 whisper 准得多，英文也略好，而且更快。用 llama.cpp 运行。",
+        _TH: "แม่นกว่า whisper มากในภาษาจีน ภาษาอังกฤษก็ดีกว่าเล็กน้อย "
              "และเร็วกว่า ทำงานบน llama.cpp",
-        _DE: "Die Vorgabe. Im Chinesischen viel genauer als whisper, im Englischen etwas "
+        _DE: "Im Chinesischen viel genauer als whisper, im Englischen etwas "
              "besser, und schneller. Läuft auf llama.cpp.",
-        _FR: "Le choix par défaut. Bien plus précis que whisper en chinois, un peu "
+        _FR: "Bien plus précis que whisper en chinois, un peu "
              "meilleur en anglais, et plus rapide. Tourne sur llama.cpp.",
-        _ES: "El valor por defecto. Mucho más preciso que whisper en chino, algo mejor "
+        _ES: "Mucho más preciso que whisper en chino, algo mejor "
              "en inglés y más rápido. Funciona con llama.cpp.",
-        _JA: "既定値です。中国語では whisper よりはるかに正確で、英語も少し良く、"
+        _JA: "中国語では whisper よりはるかに正確で、英語も少し良く、"
              "しかも速い。llama.cpp で動きます。",
-        _VI: "Mặc định. Chính xác hơn whisper nhiều ở tiếng Trung, tốt hơn một chút ở "
+        _VI: "Chính xác hơn whisper nhiều ở tiếng Trung, tốt hơn một chút ở "
              "tiếng Anh, và nhanh hơn. Chạy trên llama.cpp.",
     },
     "30 languages and 22 Chinese dialects": {

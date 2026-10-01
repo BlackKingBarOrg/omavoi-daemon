@@ -29,6 +29,10 @@ class ModelSpec:
     repo: str             # HuggingFace repo
     filename: str = ""    # single-file models (ggml); empty = whole snapshot
     size_mb: int = 0
+    # Never "the default". The console says that of whichever model your
+    # configuration names, beside the row, and the "recommended" tag already
+    # marks the one a fresh install runs. A note that said it too put two
+    # defaults on one screen as soon as you chose another.
     note: str = ""
     tags: tuple[str, ...] = field(default_factory=tuple)
     kind: str = SPEECH    # SPEECH | LLM
@@ -80,8 +84,8 @@ CATALOG: tuple[ModelSpec, ...] = (
     # whisper's tokenizer gave it.
     ModelSpec("qwen3-asr-1.7b", GGML, _ASR, "ggml-org/Qwen3-ASR-1.7B-GGUF",
               "Qwen3-ASR-1.7B-Q8_0.gguf", 2404,
-              "The default. Much more accurate than whisper in Chinese, a little "
-              "better in English, and faster. Runs on llama.cpp.",
+              "Much more accurate than whisper in Chinese, a little better in "
+              "English, and faster. Runs on llama.cpp.",
               ("recommended", "accurate", "fast"),
               languages="30 languages and 22 Chinese dialects",
               extra_files=("mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",),
@@ -146,8 +150,8 @@ CATALOG: tuple[ModelSpec, ...] = (
     # llm.local.model so a fresh install ran it whatever you dictated.
     ModelSpec("gemma-3-4b", GGML, _LLM, "ggml-org/gemma-3-4b-it-GGUF",
               "gemma-3-4b-it-Q4_K_M.gguf", 2374,
-              "Even coverage across languages, and half the size of qwen3-8b. "
-              "The default.", ("recommended", "fast"), kind=LLM,
+              "Even coverage across languages, and half the size of qwen3-8b.",
+              ("recommended", "fast"), kind=LLM,
               languages="good in many languages"),
     ModelSpec("gemma-3-12b", GGML, _LLM, "ggml-org/gemma-3-12b-it-GGUF",
               "gemma-3-12b-it-Q4_K_M.gguf", 6962,
