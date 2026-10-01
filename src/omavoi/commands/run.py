@@ -86,14 +86,21 @@ def cmd_transcribe(args: argparse.Namespace) -> int:
 
     backend = asr.build(cfg)
     backend.load()
+    pipeline = None
     try:
         capture = Capture(samples, rate, 0.0, 0.0, False)
-        entry = Pipeline(cfg, backend).process(
-            capture, inject=args.inject, forced_mode=args.mode)
+        pipeline = Pipeline(cfg, backend)
+        entry = pipeline.process(capture, inject=args.inject, forced_mode=args.mode)
     finally:
         close = getattr(backend, "close", None)
         if callable(close):
             close()
+        # A mode with a local LLM step started a llama-server of its own.
+        # Left running, it outlived the command — still holding its six
+        # gigabytes of weights an hour later, parented to init — because only
+        # the speech engine was ever closed here.
+        if pipeline is not None:
+            pipeline.llms.close()
 
     if args.json:
         print(json.dumps(entry, ensure_ascii=False, indent=2))
