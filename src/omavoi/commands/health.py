@@ -337,7 +337,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"\n{BOLD}asr{RESET}")
     from .. import asr as asr_mod
 
-    backend_name = asr_mod.canonical(cfg["speech"]["backend"])
+    backend_name = asr_mod.engine_for(cfg)
     check("backend", backend_name is not None, str(backend_name or cfg["speech"]["backend"]))
 
     if backend_name == "api":
@@ -361,6 +361,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         key = cfg["speech"]["model"]
         if not key.startswith("ggml:"):
             key = f"ggml:{key}"
+        check(f"model {key}", models.is_downloaded(key),
+              str(models.local_path(key) or f"{YELLOW}omavoi model pull {key}{RESET}"))
+    elif backend_name == "local-llama-asr":
+        from ..llm.llama_local import find_server as find_llama
+
+        server = find_llama()
+        check("llama.cpp server", bool(server),
+              server or f"{RED}not found — pacman -S llama-cpp{RESET}")
+        key = cfg["speech"]["model"]
         check(f"model {key}", models.is_downloaded(key),
               str(models.local_path(key) or f"{YELLOW}omavoi model pull {key}{RESET}"))
     elif backend_name == "api":

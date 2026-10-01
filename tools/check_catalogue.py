@@ -90,7 +90,13 @@ def main(argv: list[str]) -> int:
     for spec in models.CATALOG:
         if not spec.repo:
             continue
-        real = _file_mib(spec.repo, spec.filename) if spec.filename else _repo_mib(spec.repo)
+        if spec.filename:
+            # A model and the files it cannot run without are one download,
+            # and size_mb is the size of that download.
+            parts = [_file_mib(spec.repo, name) for name in spec.files]
+            real = None if None in parts else sum(parts)
+        else:
+            real = _repo_mib(spec.repo)
         if real is None:
             problems += 1
             continue

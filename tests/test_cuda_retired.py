@@ -20,7 +20,8 @@ from omavoi import asr, config, i18n, models
 
 def test_the_engine_is_not_offered_any_more():
     assert "local-whisper" not in asr.BACKENDS
-    assert set(asr.BACKENDS) == {"local-whispercpp", "api"}
+    # Qwen3-ASR's engine came after it, and is not it.
+    assert set(asr.BACKENDS) == {"local-whispercpp", "local-llama-asr", "api"}
     # The names that meant that engine specifically resolve to nothing.
     assert asr.canonical("ct2") is None
     assert asr.canonical("faster-whisper") is None

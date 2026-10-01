@@ -143,6 +143,17 @@ DEFAULTS: dict[str, Any] = {
             "beam_size": 5,
             "startup_timeout": 120.0,
         },
+        # Qwen3-ASR's own llama-server, started with the daemon like
+        # whisper-server: the speech model stays resident either way.
+        "local_llama_asr": {
+            "binary": "",
+            "port": 0,
+            "n_gpu_layers": 99,
+            # Room for audio.max_seconds of speech: the audio's tokens are
+            # context before the first word of the transcript is.
+            "ctx_size": 8192,
+            "startup_timeout": 120.0,
+        },
         "api": {
             "provider": "openai",
             "base_url": "",

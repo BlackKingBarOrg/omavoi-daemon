@@ -3,6 +3,8 @@
 Two on-disk formats, because the two local engines can't share weights:
 
   ggml  whisper.cpp. Runs on Vulkan (any GPU), CUDA, ROCm, or CPU.
+        Qwen3-ASR's GGUF files too: the same ggml family, run by llama.cpp,
+        and keyed `ggml:` because a speech key has always been.
 
 Existing ggml files from other tools are discovered rather than re-downloaded —
 a 3 GB model is not worth having twice.
@@ -31,6 +33,14 @@ class ModelSpec:
     tags: tuple[str, ...] = field(default_factory=tuple)
     kind: str = SPEECH    # SPEECH | LLM
     languages: str = ""
+    # Files beside `filename` that the model cannot run without, fetched,
+    # found and removed with it. Qwen3-ASR's audio encoder is a second GGUF,
+    # and weights without it are not "downloaded" in any sense that matters.
+    extra_files: tuple[str, ...] = ()
+
+    @property
+    def files(self) -> tuple[str, ...]:
+        return (self.filename, *self.extra_files)
 
     @property
     def key(self) -> str:
@@ -44,6 +54,7 @@ class ModelSpec:
 
 
 _CPP = "local-whispercpp"
+_ASR = "local-llama-asr"
 _LLM = "llama-local"
 _HF_CPP = "ggerganov/whisper.cpp"
 
@@ -81,6 +92,22 @@ CATALOG: tuple[ModelSpec, ...] = (
               "ggml-large-v3-turbo-q5_0.bin", 547,
               "The lightest thing still worth using.", ("quant", "fast"),
               languages="all 99 languages, some better than others"),
+
+    # -- Qwen3-ASR, run by llama-server (Vulkan, any GPU) ---------------------
+    #
+    # Not whisper, so not whisper.cpp: asr/local_llama_asr.py starts its own
+    # llama-server for it. Measured on 2026-10-01 on an Intel Arc B390 over
+    # twenty recorded takes: 0.80 s a take against large-v3-turbo's 3.38 s,
+    # with the two transcripts 2.9% apart. The accuracy claim in the note is
+    # the published one — AISHELL-1 CER 1.48 against whisper-large-v3's 5.14,
+    # Open ASR Leaderboard English WER 4.31 against turbo's 6.36 — and not a
+    # measurement of ours, which had no reference transcripts to score.
+    ModelSpec("qwen3-asr-1.7b", GGML, _ASR, "ggml-org/Qwen3-ASR-1.7B-GGUF",
+              "Qwen3-ASR-1.7B-Q8_0.gguf", 2404,
+              "Much more accurate than whisper in Chinese, a little better in "
+              "English, and faster. Runs on llama.cpp.", ("accurate", "fast"),
+              languages="30 languages and 22 Chinese dialects",
+              extra_files=("mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",)),
 
     # -- LLM, run by the bundled llama-server ---------------------------------
     #
@@ -185,14 +212,23 @@ def bytes_in_flight(key: str) -> int:
     entry = spec(key)
     if entry is None or not entry.filename:
         return 0
-    root = model_root()
-    for directory in (llm_dir() if entry.kind == LLM else root / "ggml",):
-        part = directory / ".cache" / "huggingface" / "download" / f"{entry.filename}.incomplete"
+    directory = llm_dir() if entry.kind == LLM else model_root() / "ggml"
+    # A model of several files counts the ones already finished too, so the
+    # bar does not fall back to zero between them; but only while one is
+    # still incomplete, because 0 is how "not downloading" is said.
+    partial = done = 0
+    for name in entry.files:
         try:
-            return part.stat().st_size
+            partial += (directory / ".cache" / "huggingface" / "download"
+                        / f"{name}.incomplete").stat().st_size
+            continue
         except OSError:
-            return 0
-    return 0
+            pass
+        try:
+            done += (directory / name).stat().st_size
+        except OSError:
+            pass
+    return partial + done if partial else 0
 
 
 def local_path(key: str) -> Path | None:
@@ -201,16 +237,14 @@ def local_path(key: str) -> Path | None:
     if entry is None:
         return None
 
-    if entry.kind == LLM:
-        candidate = llm_dir() / entry.filename
-        return candidate if candidate.is_file() else None
-
-    for directory in ggml_search_dirs():
+    # The first file is the model; the others have to be in the same
+    # directory, since that is where the backend looks for them.
+    dirs = [llm_dir()] if entry.kind == LLM else ggml_search_dirs()
+    for directory in dirs:
         candidate = directory / entry.filename
-        if candidate.is_file():
+        if candidate.is_file() and all((directory / name).is_file()
+                                       for name in entry.extra_files):
             return candidate
-    return None
-
     return None
 
 
@@ -238,17 +272,15 @@ def pull(key: str) -> Path:
     root = model_root()
     root.mkdir(parents=True, exist_ok=True)
 
-    if entry.kind == LLM:
-        from huggingface_hub import hf_hub_download
-
-        target = llm_dir()
-        target.mkdir(parents=True, exist_ok=True)
-        return Path(hf_hub_download(entry.repo, entry.filename, local_dir=str(target)))
-
     from huggingface_hub import hf_hub_download
 
-    target = root / "ggml"
+    target = llm_dir() if entry.kind == LLM else root / "ggml"
     target.mkdir(parents=True, exist_ok=True)
+    # The small companions first: the model file is what local_path asks
+    # about, so it arriving last means a half-fetched model never reads as
+    # downloaded.
+    for name in entry.extra_files:
+        hf_hub_download(entry.repo, name, local_dir=str(target))
     return Path(hf_hub_download(entry.repo, entry.filename, local_dir=str(target)))
 
 
@@ -258,11 +290,14 @@ def remove(key: str) -> bool:
         raise ValueError(f"unknown model {key!r}")
     if not owned_by_us(key):
         return False
-    # One file each, ggml and llm alike. The directory-shaped case was the
-    # ct2 snapshot layout, and there are no ct2 models.
+    # Files, ggml and llm alike, and a companion goes with its model. The
+    # directory-shaped case was the ct2 snapshot layout, and there are no
+    # ct2 models.
     path = local_path(key)
     if path is None:
         return False
+    for name in entry.extra_files:
+        (path.parent / name).unlink(missing_ok=True)
     path.unlink()
     return True
 

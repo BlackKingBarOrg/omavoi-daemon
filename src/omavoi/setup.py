@@ -127,7 +127,7 @@ def check(cfg: dict[str, Any]) -> Report:
     from .asr.local_whispercpp import find_server
 
     steps: list[Step] = []
-    backend = asr.canonical(cfg["speech"]["backend"]) or ""
+    backend = asr.engine_for(cfg) or ""
 
     # 1. What we type with. Omarchy ships all of these, so this is normally green.
     # xdotool is not optional despite only mattering to X11 windows: without
@@ -190,6 +190,18 @@ def check(cfg: dict[str, Any]) -> Report:
                  "visible."
                  + ("" if has_gpu else " Swap ggml-vulkan for ggml-cuda or "
                     "ggml-hip if you would rather use the vendor backend."),
+        ))
+    elif backend == "local-llama-asr":
+        from .llm.llama_local import find_server as find_llama
+
+        server = find_llama()
+        steps.append(Step(
+            "engine", "Speech engine (llama.cpp)", server is not None,
+            detail=server or "llama.cpp is not installed",
+            command="" if server else "sudo pacman -S --needed llama-cpp",
+            needs_root=server is None,
+            note="About 7 MB, and the same llama-server the local AI model uses. "
+                 "It reuses the ggml backends whisper.cpp brought in.",
         ))
     else:
         steps.append(Step("engine", "Speech engine (remote API)", True,

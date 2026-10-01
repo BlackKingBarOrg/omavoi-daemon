@@ -284,12 +284,13 @@ def cmd_model(args: argparse.Namespace) -> int:
         text_lang = i18n.ui_lang(cfg)
         print(f"{BOLD}  {'model':<24}{'size':>7}  {'state':<10}notes{RESET}")
         groups = [
-            (models.GGML, models.SPEECH, "speech · local-whispercpp (Vulkan)"),
+            ("local-whispercpp", models.SPEECH, "speech · local-whispercpp (Vulkan)"),
+            ("local-llama-asr", models.SPEECH, "speech · local-llama-asr, llama.cpp (Vulkan)"),
             ("", models.LLM, "llm · llama-local, started by the daemon"),
         ]
-        for fmt, kind, engine in groups:
+        for backend, kind, engine in groups:
             entries = [s for s in models.CATALOG
-                       if s.kind == kind and (not fmt or s.fmt == fmt)]
+                       if s.kind == kind and (not backend or s.backend == backend)]
             if not entries:
                 continue
             print(f"\n{DIM}{engine}{RESET}")

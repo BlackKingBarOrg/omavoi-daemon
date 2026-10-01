@@ -180,16 +180,21 @@ class WhisperCppBackend:
         key = str(model_key or "").strip()
         if not key or key == self.model_key:
             return
+        # Before anything is closed. Qwen3-ASR's weights are ggml too, and
+        # handed to whisper-server they fail to load after the old server
+        # has already been stopped — and the daemon calls this on every
+        # config reload, so choosing that model in the console would leave
+        # nothing listening until a restart.
+        spec = models.spec(key)
+        if spec is not None and (spec.fmt != GGML or spec.backend != self.name):
+            raise NotReady(
+                f"{key} runs on {spec.backend}, not whisper.cpp; "
+                f"a mode cannot change the engine, only the weights"
+            )
         path = models.local_path(key)
         if path is None:
             raise NotReady(
                 f"{key} is not downloaded. Run: omavoi model pull {key}"
-            )
-        spec = models.spec(key)
-        if spec is not None and spec.fmt != GGML:
-            raise NotReady(
-                f"{key} is a {spec.fmt} model and this engine runs {GGML}; "
-                f"a mode cannot change the engine, only the weights"
             )
         log.info("switching speech model: %s -> %s", self.model_key, key)
         self.close()
